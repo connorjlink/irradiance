@@ -15,6 +15,13 @@ namespace ir
         PBRMaterial material;
 
     public:
+        Object(const PBRMaterial& material) 
+            : material{ material }
+        {
+        }
+        virtual ~Object() = default;
+
+    public:
         virtual RayIntersection intersect(const Ray& ray) = 0;
     };
 
@@ -23,6 +30,12 @@ namespace ir
     public:
         glm::vec3 center;
         Real radius;
+
+    public:
+        Sphere(glm::vec3 center, Real radius, const PBRMaterial& material)
+            : center{ center }, radius{ radius }, Object{ material }
+        {
+        }
 
     public:
         RayIntersection intersect(const Ray& ray) override;
@@ -35,9 +48,8 @@ namespace ir
 
     public:
         Triangle(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const PBRMaterial& material)
-            : v0{ v0 }, v1{ v1 }, v2{ v2 }
+            : v0{ v0 }, v1{ v1 }, v2{ v2 }, Object{ material }
         {
-            this->material = material;
         }
 
     public:
@@ -48,6 +60,12 @@ namespace ir
     {
     public:
         glm::vec3 v0, v1, v2, v3;
+
+    public:
+        Quadrilateral(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, const PBRMaterial& material)
+            : v0{ v0 }, v1{ v1 }, v2{ v2 }, v3{ v3 }, Object{ material }
+        {
+        }
     
     public:
         RayIntersection intersect(const Ray& ray) override;
