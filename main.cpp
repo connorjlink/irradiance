@@ -22,6 +22,8 @@ static constexpr Real MOVEMENT_SPEED = 5.f;
 static constexpr glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
 static constexpr Real SAMPLE_JITTER = .001f;
 
+static constexpr Real NONMETAL_REFLECTANCE = .04f;
+
 static constexpr int FRAME_HISTORY = 5;
 
 int _bounces = 2;
@@ -91,7 +93,21 @@ private:
     {
         new Sphere
         {
-            glm::vec3{ 0.f, -3.f, 5.f },
+            glm::vec3{ -2.f, 0.f, 5.f },
+            .5f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ 0.f, 1.f, 0.f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = .95f,
+                .anisotropy = 0.f,
+                .roughness = 0.f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ 0.f, 0.f, 5.f },
             1.f,
             PBRMaterial
             {
@@ -105,7 +121,7 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ 3.f, -3.f, 5.f },
+            glm::vec3{ 3.f, 0.f, 5.f },
             1.5f,
             PBRMaterial
             {
@@ -119,11 +135,11 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ 0.f, 1010.f, 5.f },
+            glm::vec3{ 0.f, 1003.f, 5.f },
             1000.f,
             PBRMaterial
             {
-                .albedo = glm::vec3{ .25f, 5.f, .75f },
+                .albedo = glm::vec3{ .25f, .5f, .75f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
                 .metallicity = 0.1f,
@@ -183,6 +199,81 @@ private:
         return result;
     }
 
+    glm::vec3 trace(Ray& ray, int bounces)
+    {
+        if (bounces <= 0)
+        {
+            return glm::vec3{ 0.f };
+        }
+
+        glm::vec3 composite_color = glm::vec3{ 1.f, 1.f, 1.f };
+
+        // TODO: bounding volume hierarchy acceleration structure
+
+        auto nearest_intersection = RayIntersection{};
+
+        for (const auto& object : scene_objects)
+        {
+            const auto intersection = object->intersect(ray);
+
+            if (intersection.hit && intersection.depth < nearest_intersection.depth)
+            {
+                nearest_intersection = intersection;
+            }
+        }
+
+        if (nearest_intersection.hit)
+        {
+            DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
+
+            // for testing only
+            //std::cout << "Hit at depth: " << intersection.depth << "\n";
+
+            // TODO: implement full PBR shading model
+
+            const auto reflection = glm::reflect(ray.direction, nearest_intersection.normal);
+
+            auto random_in_unit_sphere = glm::sphericalRand(1.f);
+            if (glm::dot(random_in_unit_sphere, nearest_intersection.normal) < 0.f)
+            {
+                // needs to always face outward relative to the surface normal
+                random_in_unit_sphere = -random_in_unit_sphere;
+            }
+
+            // move to next bounce
+            ray.origin = nearest_intersection.position + nearest_intersection.normal * .001f; // offset to prevent self-intersection
+
+            const auto old_direction = ray.direction;
+
+            // TODO: incorporate importance sampling
+            ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+
+            // Fresnel term with Schlick's approximation
+            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, nearest_intersection.material.albedo, nearest_intersection.material.metallicity);
+            // negative direction for non-incident ray
+            const auto angle = glm::clamp(glm::dot(-old_direction, nearest_intersection.normal), 0.f, 1.f);
+            const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - angle, 5.f); 
+
+            // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
+            const auto diffuse = (1.f - nearest_intersection.material.metallicity) * nearest_intersection.material.albedo / glm::pi<Real>();
+            // TODO: replace with a BRDF
+            const auto specular = F * trace(ray, bounces - 1);
+
+            composite_color *= diffuse + specular;
+
+            // TODO: cast rays toward each surface (and emitter) for global illumination
+        }
+        else
+        {
+            // TODO: environment cube map sampling
+            // accent color for sky
+            composite_color *= glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
+            //composite_color *= glm::vec3{ 0.f, 0.f, 0.f };
+        }
+
+        return composite_color;
+    };
+
 public:
 	bool OnUserCreate() override
 	{
@@ -218,7 +309,7 @@ public:
             yaw_degrees -= static_cast<Real>(delta.x) * fElapsedTime * MOUSE_SENSITIVITY;
 
             pitch_degrees += static_cast<Real>(delta.y) * fElapsedTime * MOUSE_SENSITIVITY;
-            // prevents gimbal because the direction uses Euler angles
+            // prevents gimbal lock because the direction uses Euler angles
             pitch_degrees = glm::clamp(pitch_degrees, -80.f, 80.f);
 
             last_mouse_position = GetMousePos();
@@ -291,63 +382,7 @@ public:
                     auto ray_jittered = ray;
                     ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
 
-                    glm::vec3 composite_color = glm::vec3{ 1.f, 1.f, 1.f };
-
-                    for (int b = 0; b < _bounces; b++)
-                    {
-                        // TODO: bounding volume hierarchy acceleration structure
-
-                        auto nearest_intersection = RayIntersection{};
-
-                        for (const auto& object : scene_objects)
-                        {
-                            const auto intersection = object->intersect(ray_jittered);
-
-                            if (intersection.hit && intersection.depth < nearest_intersection.depth)
-                            {
-                                nearest_intersection = intersection;
-                            }
-                        }
-
-                        if (nearest_intersection.hit)
-                        {
-                            DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
-
-                            // for testing only
-                            //std::cout << "Hit at depth: " << intersection.depth << "\n";
-
-                            // TODO: implement full PBR shading model
-
-                            composite_color *= nearest_intersection.material.albedo;
-
-                            // move to next bounce
-                            ray_jittered.origin = nearest_intersection.position + nearest_intersection.normal * .001f; // offset to prevent self-intersection
-
-                            const auto reflection = glm::reflect(ray_jittered.direction, nearest_intersection.normal);
-
-                            auto random_in_unit_sphere = glm::sphericalRand(1.f);
-                            if (glm::dot(random_in_unit_sphere, nearest_intersection.normal) < 0.f)
-                            {
-                                // needs to always face outward relative to the surface normal
-                                random_in_unit_sphere = -random_in_unit_sphere;
-                            }
-
-                            // TODO: cast rays toward each emissive surface in the scene
-
-                            // TODO: incorporate importance and BRDF sampling
-                            ray_jittered.direction = glm::normalize(glm::mix(reflection, random_in_unit_sphere, nearest_intersection.material.roughness));
-                        }
-                        else
-                        {
-                            // TODO: environment cube map sampling
-                            // accent color for sky
-                            composite_color *= glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
-                            //composite_color *= glm::vec3{ 0.f, 0.f, 0.f };
-                            break;
-                        }
-                    }
-
-                    total_color += composite_color;
+                    total_color += trace(ray_jittered, _bounces);
                 }
 
                 total_color /= static_cast<Real>(_samples);
@@ -419,7 +454,11 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto averaged_color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
-                    Draw(x, y, olc::Pixel(averaged_color.r * 255.f, averaged_color.g * 255.f, averaged_color.b * 255.f));
+
+                    const auto tone_mapped = averaged_color / (averaged_color + glm::vec3{ 1.f });
+                    const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
+
+                    Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
                 }
             }
         }
