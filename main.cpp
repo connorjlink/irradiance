@@ -17,7 +17,7 @@
 
 using namespace ir;
 
-static constexpr Real MOUSE_SENSITIVITY = 0.1f;
+static constexpr Real MOUSE_SENSITIVITY = 5.f;
 static constexpr Real MOVEMENT_SPEED = 5.f;
 static constexpr glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
 static constexpr Real SAMPLE_JITTER = .001f;
@@ -38,7 +38,7 @@ private:
     {
         new Sphere
         {
-            glm::vec3{ 0.f, 0.f, -5.f },
+            glm::vec3{ 0.f, 0.f, 5.f },
             1.f,
             PBRMaterial
             {
@@ -54,7 +54,7 @@ private:
 
 private:
     olc::vi2d last_mouse_position = { 0, 0 };
-    bool dirty = false;
+    bool dirty = true;
     glm::vec3 position = { 0.f, 0.f, 0.f };
     Real fov_degrees = 90.f;
     Real yaw_degrees = 0.f;
@@ -63,7 +63,7 @@ private:
     Ray* rays = nullptr;
     glm::vec3* framebuffer = nullptr;
     bool highlight_dof = false;
-    Real dof_distance = std::numeric_limits<Real>::infinity();
+    Real dof_distance = 0.f;
 
 private:
     glm::vec3 compute_direction() const
@@ -94,6 +94,15 @@ public:
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
+        DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {} ms/frame: {:.2f}", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", highlight_dof ? "ON" : "OFF", dof_distance), olc::YELLOW);
+
+        const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
+
+        DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
+
         if (GetMouse(olc::Mouse::RIGHT).bHeld)
         {
             const auto delta = GetMousePos() - last_mouse_position;
@@ -110,7 +119,7 @@ public:
             dirty = true;
         }
 
-        auto movement_speed = MOVEMENT_SPEED * (GetKey(olc::Key::SHIFT).bHeld ? 5.f : 1.f);
+        auto movement_speed = MOVEMENT_SPEED * (GetKey(olc::Key::CTRL).bHeld ? 5.f : 1.f);
 
         if (GetKey(olc::Key::W).bHeld)
         {
@@ -134,10 +143,31 @@ public:
             position += right * fElapsedTime * movement_speed;
             dirty = true;
         }
+        if (GetKey(olc::Key::SPACE).bHeld)
+        {
+            position += UP * fElapsedTime * movement_speed;
+            dirty = true;
+        }
+        if (GetKey(olc::Key::SHIFT).bHeld)
+        {
+            position -= UP * fElapsedTime * movement_speed;
+            dirty = true;
+        }
 
         if (GetKey(olc::Key::TAB).bPressed)
         {
             highlight_dof = !highlight_dof;
+        }
+        if (GetKey(olc::Key::UP).bHeld)
+        {
+            dof_distance += fElapsedTime * movement_speed * 2.f;
+            dirty = true;
+        }
+        if (GetKey(olc::Key::DOWN).bHeld)
+        {
+            dof_distance -= fElapsedTime * movement_speed * 2.f;
+            dof_distance = glm::max(dof_distance, 0.f);
+            dirty = true;
         }
 
         if (dirty)
@@ -150,32 +180,33 @@ public:
             const auto right = compute_right();
 
             const auto projection = glm::perspective(fov_radians, aspect_ratio, .1f, 1000.f);
+            const auto inverse_projection = glm::inverse(projection);
             const auto view = glm::lookAt(position, position + compute_direction(), UP);
-            
-            const auto inverse_projection_view = glm::inverse(projection * view);
+            const auto inverse_view = glm::inverse(view);
 
+        #pragma omp parallel for collapse(2)
             for (int x = 0; x < ScreenWidth(); x++)
             {
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
-                    const auto u = (static_cast<Real>(x) + .5f) / static_cast<Real>(ScreenWidth());
-                    const auto v = (static_cast<Real>(y) + .5f) / static_cast<Real>(ScreenHeight());
+                    const auto u = static_cast<Real>(x) / static_cast<Real>(ScreenWidth());
+                    const auto v = static_cast<Real>(y) / static_cast<Real>(ScreenHeight());
 
                     // normalized device coordinates
                     const auto ndc_x = 2.f * u - 1.f;
-                    const auto ndc_y = 1.f - 2.f * v;
+                    const auto ndc_y = 2.f * v - 1.f;
 
-                    const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, -1.f, 1.f };
-                    const auto world_space_pos_homogeneous = inverse_projection_view * clip_space_pos;
+                    const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
+                    const auto world_space_pos_homogeneous = inverse_projection * clip_space_pos;
                     const auto world_space_pos = world_space_pos_homogeneous / world_space_pos_homogeneous.w;
+                    const auto world_space_pos_normalized = inverse_view * glm::normalize(glm::vec4{ glm::vec3{ world_space_pos }, 0.f });
 
-                    const auto direction = glm::normalize(glm::vec3{ world_space_pos } - position);
-
-                    rays[y * ScreenWidth() + x] = Ray{ position, direction };
+                    rays[y * ScreenWidth() + x] = Ray{ position, world_space_pos_normalized };
                 }
             }
         }
 
+    #pragma omp parallel for collapse(2)
 		for (int x = 0; x < ScreenWidth(); x++)
         {
 			for (int y = 0; y < ScreenHeight(); y++)
@@ -202,6 +233,11 @@ public:
 
                             if (intersection.hit)
                             {
+                                DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
+
+                                // for testing only
+                                //std::cout << "Hit at depth: " << intersection.depth << "\n";
+
                                 // TODO: implement full PBR shading model
 
                                 // simple diffuse shading for now
@@ -216,15 +252,26 @@ public:
                             else
                             {
                                 // TODO: environment cube map sampling
+                                // accent color for sky
+                                //composite_color = glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
                                 composite_color = glm::vec3{ 0.f, 0.f, 0.f };
                                 break;
                             }
                         }
                     }
+
+                    total_color += composite_color;
                 }
+
+                total_color /= static_cast<Real>(_samples);
 
                 Draw(x, y, olc::Pixel(total_color.r * 255, total_color.g * 255, total_color.b * 255));	
             }
+        }
+
+        if (dirty)
+        {
+            DrawRectDecal({ 1.f, 1.f }, { 2.f, 2.f }, olc::GREEN);
         }
 
         last_mouse_position = GetMousePos();
