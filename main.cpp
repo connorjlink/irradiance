@@ -22,9 +22,61 @@ static constexpr Real MOVEMENT_SPEED = 5.f;
 static constexpr glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
 static constexpr Real SAMPLE_JITTER = .001f;
 
+static constexpr int FRAME_HISTORY = 5;
+
 int _bounces = 2;
 int _samples = 5;
-int _blur_frames = 5;
+
+template<typename T, std::size_t N>
+class CircularBuffer
+{
+private:
+    std::array<T, N> data;
+    std::size_t index = 0;
+    std::size_t count = 0;
+
+public:
+    void push(const T& value)
+    {
+        data[index] = value;
+        index = (index + 1) % N;
+
+        if (count < N)
+        {
+            count++;
+        }
+    }
+    
+    void reset(std::size_t count)
+    {
+        index = 0;
+        count = 0;
+        for (auto& item : data)
+        {
+            item = {};
+            item.resize(count);
+        }
+    }
+
+    T& peek(size_t i = 0)
+    {
+        return data[(index + i) % N];
+    }
+
+    T& at(size_t i = 0)
+    {
+        return data[i];
+    }
+
+    std::size_t size() const
+    {
+        return count;
+    }
+
+public:
+    auto begin() { return data.begin(); }
+    auto end() { return data.end(); }
+};
 
 class Irradiance : public olc::PixelGameEngine
 {
@@ -39,14 +91,42 @@ private:
     {
         new Sphere
         {
-            glm::vec3{ 0.f, 0.f, 5.f },
+            glm::vec3{ 0.f, -3.f, 5.f },
             1.f,
             PBRMaterial
             {
                 .albedo = glm::vec3{ 1.f, 0.f, 0.f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
+                .metallicity = .25f,
+                .anisotropy = 0.f,
+                .roughness = .25f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ 3.f, -3.f, 5.f },
+            1.5f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ 0.f, 0.f, 1.f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = .8f,
+                .anisotropy = 0.f,
+                .roughness = .1f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ 0.f, 1010.f, 5.f },
+            1000.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .25f, 5.f, .75f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.1f,
                 .anisotropy = 0.f,
                 .roughness = 0.5f,
             }
@@ -56,18 +136,20 @@ private:
 private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
+    bool last_dirty = false;
     glm::vec3 position = { 0.f, 0.f, 0.f };
     Real fov_degrees = 90.f;
     Real yaw_degrees = 0.f;
     Real pitch_degrees = 0.f;
     int accumulated_frames = 1;
     Ray* rays = nullptr;
-    glm::vec3* framebuffer = nullptr;
     bool highlight_dof = false;
     Real dof_distance = 0.f;
-    std::vector<glm::vec3*> blur_framebuffers;
-    int blur_frames = 0;
-    bool first_frame = true;
+
+    glm::vec3* frame_buffer = nullptr;
+    glm::vec3* staging_buffer = nullptr;
+
+    CircularBuffer<std::vector<glm::vec3>, FRAME_HISTORY> frame_history;
 
 private:
     glm::vec3 compute_direction() const
@@ -88,18 +170,33 @@ private:
         return glm::normalize(glm::cross(direction, UP));
     }
 
+    glm::vec3 compute_average(std::size_t pixel)
+    {
+        auto result = glm::vec3{ 0.f };
+
+        for (int i = 0; i < frame_history.size(); i++)
+        {
+            result += frame_history.at(i)[pixel];
+        }
+        result /= static_cast<Real>(FRAME_HISTORY);
+
+        return result;
+    }
+
 public:
 	bool OnUserCreate() override
 	{
         const auto number = ScreenWidth() * ScreenHeight();
-
+        
         rays = new Ray[number];
-        framebuffer = new glm::vec3[number];
-        blur_framebuffers.resize(_blur_frames, nullptr);
-        for (int i = 0; i < _blur_frames; i++)
+        frame_buffer = new glm::vec3[number];
+        staging_buffer = new glm::vec3[number];
+
+        for (auto& frame : frame_history)
         {
-            blur_framebuffers[i] = new glm::vec3[number];
+            frame.resize(number, glm::vec3{ 0.f });
         }
+
 		return true;
 	}
 
@@ -118,10 +215,9 @@ public:
         {
             const auto delta = GetMousePos() - last_mouse_position;
 
-            yaw_degrees += static_cast<Real>(delta.x) * fElapsedTime * MOUSE_SENSITIVITY;
+            yaw_degrees -= static_cast<Real>(delta.x) * fElapsedTime * MOUSE_SENSITIVITY;
 
-            // negative because y-axis is inverted in screen space
-            pitch_degrees -= static_cast<Real>(delta.y) * fElapsedTime * MOUSE_SENSITIVITY;
+            pitch_degrees += static_cast<Real>(delta.y) * fElapsedTime * MOUSE_SENSITIVITY;
             // prevents gimbal because the direction uses Euler angles
             pitch_degrees = glm::clamp(pitch_degrees, -80.f, 80.f);
 
@@ -156,12 +252,12 @@ public:
         }
         if (GetKey(olc::Key::SPACE).bHeld)
         {
-            position += UP * fElapsedTime * movement_speed;
+            position -= UP * fElapsedTime * movement_speed;
             dirty = true;
         }
-        if (GetKey(olc::Key::SHIFT).bHeld)
+        if (GetKey(olc::Key::C).bHeld)
         {
-            position -= UP * fElapsedTime * movement_speed;
+            position += UP * fElapsedTime * movement_speed;
             dirty = true;
         }
 
@@ -201,35 +297,53 @@ public:
                     {
                         // TODO: bounding volume hierarchy acceleration structure
 
+                        auto nearest_intersection = RayIntersection{};
+
                         for (const auto& object : scene_objects)
                         {
                             const auto intersection = object->intersect(ray_jittered);
 
-                            if (intersection.hit)
+                            if (intersection.hit && intersection.depth < nearest_intersection.depth)
                             {
-                                DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
-
-                                // for testing only
-                                //std::cout << "Hit at depth: " << intersection.depth << "\n";
-
-                                // TODO: implement full PBR shading model
-
-                                composite_color *= intersection.material.albedo;
-
-                                // move to next bounce
-                                ray_jittered.origin = intersection.position + intersection.normal * .001f; // offset to prevent self-intersection
-                                
-                                // TODO: incorporate importance and BRDF sampling
-                                ray_jittered.direction = glm::normalize(glm::reflect(ray_jittered.direction, intersection.normal));
+                                nearest_intersection = intersection;
                             }
-                            else
+                        }
+
+                        if (nearest_intersection.hit)
+                        {
+                            DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
+
+                            // for testing only
+                            //std::cout << "Hit at depth: " << intersection.depth << "\n";
+
+                            // TODO: implement full PBR shading model
+
+                            composite_color *= nearest_intersection.material.albedo;
+
+                            // move to next bounce
+                            ray_jittered.origin = nearest_intersection.position + nearest_intersection.normal * .001f; // offset to prevent self-intersection
+
+                            const auto reflection = glm::reflect(ray_jittered.direction, nearest_intersection.normal);
+
+                            auto random_in_unit_sphere = glm::sphericalRand(1.f);
+                            if (glm::dot(random_in_unit_sphere, nearest_intersection.normal) < 0.f)
                             {
-                                // TODO: environment cube map sampling
-                                // accent color for sky
-                                //composite_color = glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
-                                composite_color = glm::vec3{ 0.f, 0.f, 0.f };
-                                break;
+                                // needs to always face outward relative to the surface normal
+                                random_in_unit_sphere = -random_in_unit_sphere;
                             }
+
+                            // TODO: cast rays toward each emissive surface in the scene
+
+                            // TODO: incorporate importance and BRDF sampling
+                            ray_jittered.direction = glm::normalize(glm::mix(reflection, random_in_unit_sphere, nearest_intersection.material.roughness));
+                        }
+                        else
+                        {
+                            // TODO: environment cube map sampling
+                            // accent color for sky
+                            composite_color *= glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
+                            //composite_color *= glm::vec3{ 0.f, 0.f, 0.f };
+                            break;
                         }
                     }
 
@@ -237,8 +351,20 @@ public:
                 }
 
                 total_color /= static_cast<Real>(_samples);
-                framebuffer[y * ScreenWidth() + x] = total_color;
+                staging_buffer[y * ScreenWidth() + x] = total_color;
+                frame_buffer[y * ScreenWidth() + x] += total_color;
             }
+        }
+
+        if (!dirty && last_dirty)
+        {
+            const auto count = ScreenWidth() * ScreenHeight();
+
+            memcpy(frame_buffer, staging_buffer, sizeof(glm::vec3) * count);
+            memset(staging_buffer, 0, sizeof(glm::vec3) * count);
+
+            accumulated_frames = 1;
+            frame_history.reset(count);
         }
 
         if (dirty)
@@ -277,44 +403,33 @@ public:
                 }
             }
 
-            if (!first_frame)
+            for (int x = 0; x < ScreenWidth(); x++)
             {
-                memcpy(blur_framebuffers[blur_frames], framebuffer, sizeof(glm::vec3) * ScreenWidth() * ScreenHeight());
-                blur_frames = (blur_frames + 1) % _blur_frames;
-
-                for (int i = 0; i < ScreenWidth(); i++)
+                for (int y = 0; y < ScreenHeight(); y++)
                 {
-                    for (int j = 0; j < ScreenHeight(); j++)
-                    {
-                        glm::vec3 total_color{ 0.f };
-                        for (int k = 0; k < _blur_frames; k++)
-                        {
-                            total_color += blur_framebuffers[k][i + j * ScreenWidth()];
-                        }
-                        total_color /= static_cast<Real>(_blur_frames);
-
-                        Draw(i, j, olc::Pixel(total_color.r * 255.f, total_color.g * 255.f, total_color.b * 255.f));
-                    }
+                    const auto color = compute_average(x + y * ScreenWidth());
+                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
                 }
             }
         }
         else
         {
-            for (int i = 0; i < ScreenWidth(); i++)
+            for (int x = 0; x < ScreenWidth(); x++)
             {
-                for (int j = 0; j < ScreenHeight(); j++)
+                for (int y = 0; y < ScreenHeight(); y++)
                 {
-                    const auto pixel = framebuffer[i + j * ScreenWidth()];
-                    Draw(i, j, olc::Pixel(pixel.r * 255.f, pixel.g * 255.f, pixel.b * 255.f));
+                    const auto averaged_color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                    Draw(x, y, olc::Pixel(averaged_color.r * 255.f, averaged_color.g * 255.f, averaged_color.b * 255.f));
                 }
             }
         }
 
+        frame_history.push(std::vector<glm::vec3>(staging_buffer, staging_buffer + ScreenWidth() * ScreenHeight()));
+
         last_mouse_position = GetMousePos();
+        last_dirty = dirty;
         dirty = false;
         accumulated_frames++;
-
-        first_frame = false;
 
 		return true;
 	}
@@ -386,19 +501,11 @@ int main(int argc, char** argv)
                     _samples = result.result;
                 }
             }
-            else if (name == "-blur_frames")
-            {
-                const auto result = parse_int(value);
-                if (result.success)
-                {
-                    _blur_frames = result.result;
-                }
-            }
         }
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 1, 1) == olc::OK)
+	if (application.Construct(width, height, 3, 3) == olc::OK)
     {
 		application.Start();
     }
