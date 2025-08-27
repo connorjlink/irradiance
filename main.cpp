@@ -93,6 +93,34 @@ private:
     {
         new Sphere
         {
+            glm::vec3{ 100.f, -100.f, 0.f },
+            5.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .5f, .5f, .5f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ .9f, .9f, .5f },
+                .metallicity = 1.f,
+                .anisotropy = 0.f,
+                .roughness = 0.f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ 0.f, -2.f, 5.f },
+            1.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .5f, .5f, .5f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 1.f,
+                .anisotropy = 0.f,
+                .roughness = 0.f,
+            }
+        },
+        new Sphere
+        {
             glm::vec3{ -2.f, 0.f, 5.f },
             .5f,
             PBRMaterial
@@ -100,7 +128,7 @@ private:
                 .albedo = glm::vec3{ 0.f, 1.f, 0.f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = .95f,
+                .metallicity = 1.f,
                 .anisotropy = 0.f,
                 .roughness = 0.f,
             }
@@ -210,8 +238,8 @@ private:
 
         // TODO: bounding volume hierarchy acceleration structure
 
+        // sort to find the nearest intersection for correct geometry rendering
         auto nearest_intersection = RayIntersection{};
-
         for (const auto& object : scene_objects)
         {
             const auto intersection = object->intersect(ray);
@@ -231,6 +259,12 @@ private:
 
             // TODO: implement full PBR shading model
 
+            if (nearest_intersection.material.emission != glm::vec3{ 0.f })
+            {
+                // emissive surfaces terminate bouncing
+                return composite_color * nearest_intersection.material.emission;
+            }
+                
             const auto reflection = glm::reflect(ray.direction, nearest_intersection.normal);
 
             auto random_in_unit_sphere = glm::sphericalRand(1.f);
@@ -267,8 +301,8 @@ private:
         {
             // TODO: environment cube map sampling
             // accent color for sky
-            composite_color *= glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
-            //composite_color *= glm::vec3{ 0.f, 0.f, 0.f };
+            //composite_color *= glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
+            composite_color *= glm::vec3{ 0.f, 0.f, 0.f };
         }
 
         return composite_color;
