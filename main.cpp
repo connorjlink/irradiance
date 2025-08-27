@@ -24,6 +24,7 @@ static constexpr Real SAMPLE_JITTER = .001f;
 
 int _bounces = 2;
 int _samples = 5;
+int _blur_frames = 5;
 
 class Irradiance : public olc::PixelGameEngine
 {
@@ -64,6 +65,9 @@ private:
     glm::vec3* framebuffer = nullptr;
     bool highlight_dof = false;
     Real dof_distance = 0.f;
+    std::vector<glm::vec3*> blur_framebuffers;
+    int blur_frames = 0;
+    bool first_frame = true;
 
 private:
     glm::vec3 compute_direction() const
@@ -87,8 +91,15 @@ private:
 public:
 	bool OnUserCreate() override
 	{
-        rays = new Ray[ScreenWidth() * ScreenHeight()];
-        framebuffer = new glm::vec3[ScreenWidth() * ScreenHeight()];
+        const auto number = ScreenWidth() * ScreenHeight();
+
+        rays = new Ray[number];
+        framebuffer = new glm::vec3[number];
+        blur_framebuffers.resize(_blur_frames, nullptr);
+        for (int i = 0; i < _blur_frames; i++)
+        {
+            blur_framebuffers[i] = new glm::vec3[number];
+        }
 		return true;
 	}
 
@@ -170,43 +181,6 @@ public:
             dirty = true;
         }
 
-        if (dirty)
-        {
-            // recalculate the camera rays
-
-            const auto aspect_ratio = static_cast<Real>(ScreenWidth()) / static_cast<Real>(ScreenHeight());
-            const auto fov_radians = glm::radians(fov_degrees);
-
-            const auto right = compute_right();
-
-            const auto projection = glm::perspective(fov_radians, aspect_ratio, .1f, 1000.f);
-            const auto inverse_projection = glm::inverse(projection);
-            const auto view = glm::lookAt(position, position + compute_direction(), UP);
-            const auto inverse_view = glm::inverse(view);
-
-        #pragma omp parallel for collapse(2)
-            for (int x = 0; x < ScreenWidth(); x++)
-            {
-                for (int y = 0; y < ScreenHeight(); y++)
-                {
-                    const auto u = static_cast<Real>(x) / static_cast<Real>(ScreenWidth());
-                    const auto v = static_cast<Real>(y) / static_cast<Real>(ScreenHeight());
-
-                    // normalized device coordinates
-                    const auto ndc_x = 2.f * u - 1.f;
-                    const auto ndc_y = 2.f * v - 1.f;
-
-                    const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
-                    const auto world_space_pos_homogeneous = inverse_projection * clip_space_pos;
-                    const auto world_space_pos = world_space_pos_homogeneous / world_space_pos_homogeneous.w;
-                    const auto world_space_pos_normalized = inverse_view * glm::normalize(glm::vec4{ glm::vec3{ world_space_pos }, 0.f });
-
-                    rays[y * ScreenWidth() + x] = Ray{ position, world_space_pos_normalized };
-                }
-            }
-        }
-
-    #pragma omp parallel for collapse(2)
 		for (int x = 0; x < ScreenWidth(); x++)
         {
 			for (int y = 0; y < ScreenHeight(); y++)
@@ -240,10 +214,9 @@ public:
 
                                 // TODO: implement full PBR shading model
 
-                                // simple diffuse shading for now
                                 composite_color *= intersection.material.albedo;
 
-                                // prepare for next bounce
+                                // move to next bounce
                                 ray_jittered.origin = intersection.position + intersection.normal * .001f; // offset to prevent self-intersection
                                 
                                 // TODO: incorporate importance and BRDF sampling
@@ -264,19 +237,84 @@ public:
                 }
 
                 total_color /= static_cast<Real>(_samples);
-
-                Draw(x, y, olc::Pixel(total_color.r * 255, total_color.g * 255, total_color.b * 255));	
+                framebuffer[y * ScreenWidth() + x] = total_color;
             }
         }
 
         if (dirty)
         {
             DrawRectDecal({ 1.f, 1.f }, { 2.f, 2.f }, olc::GREEN);
+
+            // recalculate the camera rays
+
+            const auto aspect_ratio = static_cast<Real>(ScreenWidth()) / static_cast<Real>(ScreenHeight());
+            const auto fov_radians = glm::radians(fov_degrees);
+
+            const auto right = compute_right();
+
+            const auto projection = glm::perspective(fov_radians, aspect_ratio, .1f, 1000.f);
+            const auto inverse_projection = glm::inverse(projection);
+            const auto view = glm::lookAt(position, position + compute_direction(), UP);
+            const auto inverse_view = glm::inverse(view);
+
+            for (int x = 0; x < ScreenWidth(); x++)
+            {
+                for (int y = 0; y < ScreenHeight(); y++)
+                {
+                    const auto u = static_cast<Real>(x) / static_cast<Real>(ScreenWidth());
+                    const auto v = static_cast<Real>(y) / static_cast<Real>(ScreenHeight());
+
+                    // normalized device coordinates
+                    const auto ndc_x = 2.f * u - 1.f;
+                    const auto ndc_y = 2.f * v - 1.f;
+
+                    const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
+                    const auto world_space_pos_homogeneous = inverse_projection * clip_space_pos;
+                    const auto world_space_pos = world_space_pos_homogeneous / world_space_pos_homogeneous.w;
+                    const auto world_space_pos_normalized = inverse_view * glm::normalize(glm::vec4{ glm::vec3{ world_space_pos }, 0.f });
+
+                    rays[y * ScreenWidth() + x] = Ray{ position, world_space_pos_normalized };
+                }
+            }
+
+            if (!first_frame)
+            {
+                memcpy(blur_framebuffers[blur_frames], framebuffer, sizeof(glm::vec3) * ScreenWidth() * ScreenHeight());
+                blur_frames = (blur_frames + 1) % _blur_frames;
+
+                for (int i = 0; i < ScreenWidth(); i++)
+                {
+                    for (int j = 0; j < ScreenHeight(); j++)
+                    {
+                        glm::vec3 total_color{ 0.f };
+                        for (int k = 0; k < _blur_frames; k++)
+                        {
+                            total_color += blur_framebuffers[k][i + j * ScreenWidth()];
+                        }
+                        total_color /= static_cast<Real>(_blur_frames);
+
+                        Draw(i, j, olc::Pixel(total_color.r * 255.f, total_color.g * 255.f, total_color.b * 255.f));
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < ScreenWidth(); i++)
+            {
+                for (int j = 0; j < ScreenHeight(); j++)
+                {
+                    const auto pixel = framebuffer[i + j * ScreenWidth()];
+                    Draw(i, j, olc::Pixel(pixel.r * 255.f, pixel.g * 255.f, pixel.b * 255.f));
+                }
+            }
         }
 
         last_mouse_position = GetMousePos();
         dirty = false;
         accumulated_frames++;
+
+        first_frame = false;
 
 		return true;
 	}
@@ -346,6 +384,14 @@ int main(int argc, char** argv)
                 if (result.success)
                 {
                     _samples = result.result;
+                }
+            }
+            else if (name == "-blur_frames")
+            {
+                const auto result = parse_int(value);
+                if (result.success)
+                {
+                    _blur_frames = result.result;
                 }
             }
         }
