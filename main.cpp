@@ -293,13 +293,12 @@ public:
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-        DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {} ms/frame: {:.2f}", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {}, ms/frame: {:.2f}", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", highlight_dof ? "ON" : "OFF", dof_distance), olc::YELLOW);
 
         const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
-
         DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
 
         if (GetMouse(olc::Mouse::RIGHT).bHeld)
@@ -455,7 +454,9 @@ public:
                 {
                     const auto averaged_color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
 
+                    // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
                     const auto tone_mapped = averaged_color / (averaged_color + glm::vec3{ 1.f });
+                    // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
                     const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
 
                     Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
