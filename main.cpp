@@ -1,9 +1,15 @@
+// to silence intellisense errors
+#define _LIBCPP_ENABLE_EXPERIMENTAL
+
 #define OLC_PGE_APPLICATION
 #define OLC_IMAGE_STB
 #include "olcPixelGameEngine.h"
 
 #include <charconv>
 #include <string>
+#include <algorithm>
+#include <numeric>
+#include <execution>
 
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -28,6 +34,7 @@ static constexpr int FRAME_HISTORY = 5;
 
 int _bounces = 2;
 int _samples = 5;
+int _captures = 1;
 
 template<typename T, std::size_t N>
 class CircularBuffer
@@ -89,17 +96,33 @@ public:
 	}
 
 private:
+    Sphere* sun = new Sphere
+    {
+        glm::vec3{ 100.f, -100.f, 0.f },
+        10.f,
+        PBRMaterial
+        {
+            .albedo = glm::vec3{ .8f, .8f, .8f },
+            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+            //.emission = glm::vec3{ .9f, .9f, .5f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = 0.f,
+        }
+    };
+
     std::vector<Object*> scene_objects = 
     {
         new Sphere
         {
-            glm::vec3{ 100.f, -100.f, 0.f },
-            5.f,
+            glm::vec3{ 120.f, -120.f, 0.f },
+            100.f,
             PBRMaterial
             {
                 .albedo = glm::vec3{ .5f, .5f, .5f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ .9f, .9f, .5f },
+                .emission = glm::vec3{ 9.f, 9.f, 7.f },
                 .metallicity = 1.f,
                 .anisotropy = 0.f,
                 .roughness = 0.f,
@@ -172,7 +195,7 @@ private:
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
                 .metallicity = 0.1f,
                 .anisotropy = 0.f,
-                .roughness = 0.5f,
+                .roughness = 1.f,
             }
         },
     };
@@ -194,6 +217,8 @@ private:
     glm::vec3* staging_buffer = nullptr;
 
     CircularBuffer<std::vector<glm::vec3>, FRAME_HISTORY> frame_history;
+
+    std::vector<int> index_buffer;
 
 private:
     glm::vec3 compute_direction() const
@@ -234,7 +259,8 @@ private:
             return glm::vec3{ 0.f };
         }
 
-        glm::vec3 composite_color = glm::vec3{ 1.f, 1.f, 1.f };
+        glm::vec3 composite = glm::vec3{ 1.f };
+        glm::vec3 radiance = glm::vec3{ 0.f };
 
         // TODO: bounding volume hierarchy acceleration structure
 
@@ -252,7 +278,7 @@ private:
 
         if (nearest_intersection.hit)
         {
-            DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
+            //DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
 
             // for testing only
             //std::cout << "Hit at depth: " << intersection.depth << "\n";
@@ -262,8 +288,32 @@ private:
             if (nearest_intersection.material.emission != glm::vec3{ 0.f })
             {
                 // emissive surfaces terminate bouncing
-                return composite_color * nearest_intersection.material.emission;
+                return nearest_intersection.material.emission;
             }
+
+        #if 0
+            const auto difference = sun->center - nearest_intersection.position;
+            auto in_shadow = false;
+            for (const auto& shadow_candidate : scene_objects)
+            {
+                const auto shadow_ray = Ray{ nearest_intersection.position + nearest_intersection.normal * .001f, glm::normalize(difference) };
+                const auto shadow_intersection = shadow_candidate->intersect(shadow_ray);
+
+                if (shadow_intersection.hit)
+                {
+                    in_shadow = true;
+                    break;
+                }
+            }
+            if (in_shadow)
+            {
+                const auto direction = glm::normalize(difference);
+                const auto angle = glm::max(glm::dot(direction, nearest_intersection.normal), 0.f);
+                const auto light_contribution = sun->material.emission * (1.f - angle);
+
+                composite *= light_contribution;
+            }
+        #endif
                 
             const auto reflection = glm::reflect(ray.direction, nearest_intersection.normal);
 
@@ -277,23 +327,25 @@ private:
             // move to next bounce
             ray.origin = nearest_intersection.position + nearest_intersection.normal * .001f; // offset to prevent self-intersection
 
-            const auto old_direction = ray.direction;
-
-            // TODO: incorporate importance sampling
-            ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+            // TODO: incorporate importance sampling / probabilistic reflection
 
             // Fresnel term with Schlick's approximation
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, nearest_intersection.material.albedo, nearest_intersection.material.metallicity);
             // negative direction for non-incident ray
-            const auto angle = glm::clamp(glm::dot(-old_direction, nearest_intersection.normal), 0.f, 1.f);
+            const auto angle = glm::clamp(glm::dot(-ray.direction, nearest_intersection.normal), 0.f, 1.f);
             const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - angle, 5.f); 
 
-            // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
-            const auto diffuse = (1.f - nearest_intersection.material.metallicity) * nearest_intersection.material.albedo / glm::pi<Real>();
-            // TODO: replace with a BRDF
+            ray.direction =  glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
             const auto specular = F * trace(ray, bounces - 1);
 
-            composite_color *= diffuse + specular;
+            // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
+            const auto brdf = (1.f - nearest_intersection.material.metallicity) * nearest_intersection.material.albedo / glm::pi<Real>();
+            // TODO: replace with a proper BRDF
+            const auto diffuse = brdf * trace(ray, bounces - 1);
+
+            composite *= diffuse + specular;
+
+            radiance += composite;
 
             // TODO: cast rays toward each surface (and emitter) for global illumination
         }
@@ -301,11 +353,11 @@ private:
         {
             // TODO: environment cube map sampling
             // accent color for sky
-            //composite_color *= glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
-            composite_color *= glm::vec3{ 0.f, 0.f, 0.f };
+            //radiance += composite * glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
+            radiance += composite * glm::vec3{ 0.f, 0.f, 0.f };
         }
 
-        return composite_color;
+        return radiance;
     };
 
 public:
@@ -321,6 +373,9 @@ public:
         {
             frame.resize(number, glm::vec3{ 0.f });
         }
+
+        index_buffer.resize(number, 0);
+        std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
 		return true;
 	}
@@ -401,28 +456,30 @@ public:
             dirty = true;
         }
 
-		for (int x = 0; x < ScreenWidth(); x++)
+        // PARALLELIZE
+
+        std::for_each(std::execution::par, index_buffer.begin(), index_buffer.end(), [&](int i)
         {
-			for (int y = 0; y < ScreenHeight(); y++)
+            const auto x = i % ScreenWidth();
+            const auto y = i / ScreenWidth();
+
+            const auto& ray = rays[i];
+
+            glm::vec3 total_color = glm::vec3{ 0.f, 0.f, 0.f };
+
+            for (int s = 0; s < _samples; s++)
             {
-                const auto& ray = rays[y * ScreenWidth() + x];
+                // using linear to avoid biasing sampling toward the center of each pixel
+                auto ray_jittered = ray;
+                ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
 
-                glm::vec3 total_color = glm::vec3{ 0.f, 0.f, 0.f };
-
-                for (int s = 0; s < _samples; s++)
-                {
-                    // using linear to avoid biasing sampling toward the center of each pixel
-                    auto ray_jittered = ray;
-                    ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
-
-                    total_color += trace(ray_jittered, _bounces);
-                }
-
-                total_color /= static_cast<Real>(_samples);
-                staging_buffer[y * ScreenWidth() + x] = total_color;
-                frame_buffer[y * ScreenWidth() + x] += total_color;
+                total_color += trace(ray_jittered, _bounces);
             }
-        }
+
+            total_color /= static_cast<Real>(_samples);
+            staging_buffer[i] = total_color;
+            frame_buffer[i] += total_color;
+        });
 
         if (!dirty && last_dirty)
         {
@@ -476,7 +533,13 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto color = compute_average(x + y * ScreenWidth());
-                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
+
+                    // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
+                    const auto tone_mapped = color / (color + glm::vec3{ 1.f });
+                    // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
+                    const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
+
+                    Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
                 }
             }
         }
@@ -573,6 +636,14 @@ int main(int argc, char** argv)
                 if (result.success)
                 {
                     _samples = result.result;
+                }
+            }
+            else if (name == "-captures")
+            {
+                const auto result = parse_int(value);
+                if (result.success)
+                {
+                    _captures = result.result;
                 }
             }
         }
