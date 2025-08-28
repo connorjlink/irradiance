@@ -1,6 +1,7 @@
 // to silence intellisense errors
 #define _LIBCPP_ENABLE_EXPERIMENTAL
 
+#define STBI_NEON
 #define OLC_PGE_APPLICATION
 #define OLC_IMAGE_STB
 #include "olcPixelGameEngine.h"
@@ -12,6 +13,8 @@
 #include <execution>
 #include <memory>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_NEON
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/random.hpp"
@@ -26,7 +29,7 @@ using namespace ir;
 
 static constexpr Real MOUSE_SENSITIVITY = 20.f;
 static constexpr Real MOVEMENT_SPEED = 5.f;
-static constexpr glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
+static const glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
 static constexpr Real SAMPLE_JITTER = .001f;
 
 static constexpr Real NONMETAL_REFLECTANCE = .04f;
@@ -292,7 +295,8 @@ private:
     int accumulated_frames = 1;
     Ray* rays = nullptr;
     bool highlight_dof = false;
-    Real dof_distance = 0.f;
+    Real focal_distance = std::numeric_limits<Real>::infinity();
+    Real aperture_size = 1.f;
 
     glm::vec3* frame_buffer = nullptr;
     glm::vec3* staging_buffer = nullptr;
@@ -463,7 +467,9 @@ public:
         DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {}, ms/frame: {:.2f}", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", highlight_dof ? "ON" : "OFF", dof_distance), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", highlight_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 55.f }, std::format("Aperture Size: {:.2f}", aperture_size), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 65.f }, std::format("FOV: {:.2f}", fov_degrees), olc::YELLOW);
 
         const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
         DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
@@ -505,12 +511,12 @@ public:
 
             if (nearest_intersection.hit)
             {
-                dof_distance = nearest_intersection.depth;
+                focal_distance = nearest_intersection.depth;
             }
             else
             {
                 // clicked on the skybox: "infinitely" far away
-                dof_distance = std::numeric_limits<Real>::infinity();
+                focal_distance = std::numeric_limits<Real>::infinity();
             }
 
             dirty = true;
@@ -519,8 +525,8 @@ public:
         const auto wheel = GetMouseWheel();
         if (wheel != 0)
         {
-            dof_distance += static_cast<Real>(wheel) * fElapsedTime;
-            dof_distance = glm::max(dof_distance, 0.f);
+            focal_distance += static_cast<Real>(wheel) * fElapsedTime;
+            focal_distance = glm::max(focal_distance, 0.f);
             dirty = true;
         }
 
@@ -565,13 +571,27 @@ public:
         }
         if (GetKey(olc::Key::UP).bHeld)
         {
-            dof_distance += fElapsedTime * movement_speed * 2.f;
+            aperture_size += fElapsedTime * movement_speed;
+            aperture_size = glm::max(aperture_size, .001f);
             dirty = true;
         }
         if (GetKey(olc::Key::DOWN).bHeld)
         {
-            dof_distance -= fElapsedTime * movement_speed * 2.f;
-            dof_distance = glm::max(dof_distance, 0.f);
+            aperture_size -= fElapsedTime * movement_speed;
+            aperture_size = glm::max(aperture_size, .001f);
+            dirty = true;
+        }
+
+        if (GetKey(olc::Key::PGUP).bPressed)
+        {
+            fov_degrees *= .9f;
+            fov_degrees = glm::clamp(fov_degrees, 10.f, 170.f);
+            dirty = true;
+        }
+        if (GetKey(olc::Key::PGDN).bPressed)
+        {
+            fov_degrees /= .9f;
+            fov_degrees = glm::clamp(fov_degrees, 10.f, 170.f);
             dirty = true;
         }
 
@@ -593,6 +613,15 @@ public:
                 ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
 
                 total_color += trace(ray_jittered, _bounces);
+
+                // TODO: compute defocus amount from aperture size, focal distance, and intersection distance
+                const auto defocus_radius = 1.f;
+                const auto disk_sample = glm::diskRand(aperture_size);
+
+                if (highlight_dof && defocus_radius < .001f)
+                {
+                    total_color *= 1.5f;
+                }
             }
 
             total_color /= static_cast<Real>(_samples);

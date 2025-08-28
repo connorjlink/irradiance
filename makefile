@@ -1,7 +1,7 @@
 LIBS = -framework OpenGL -framework GLUT -framework Carbon
 #INCLUDES = -I $(HOME)/vcpkg/installed/arm64-osx/include
 INCLUDES = 
-EXTRAS = -std=c++23 -fopenmp -fexperimental-library
+EXTRAS = -std=c++23 -fopenmp -fexperimental-library -march=native -mtune=native -D _LIBCPP_ENABLE_EXPERIMENTAL -D GLM_ENABLE_EXPERIMENTAL -D GLM_FORCE_NEON
 # -stdlib=libc++ 
 
 build:
