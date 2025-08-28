@@ -483,7 +483,48 @@ public:
             dirty = true;
         }
 
-        auto movement_speed = MOVEMENT_SPEED * (GetKey(olc::Key::CTRL).bHeld ? 5.f : 1.f);
+        // adjust the DOF focal distance by clicking anywhere in the scene
+        if (GetMouse(olc::Mouse::MIDDLE).bPressed)
+        {
+            const auto pixel = GetMouseX() + GetMouseY() * ScreenWidth();
+            // explicit copy to avoid threading issues with the main render loop
+            auto ray = rays[pixel];
+
+            // TODO: incorporate with new bounding volume accelerator
+
+            auto nearest_intersection = RayIntersection{};
+            for (const auto& object : scene_objects)
+            {
+                const auto intersection = object->intersect(ray);
+
+                if (intersection.hit && intersection.depth < nearest_intersection.depth)
+                {
+                    nearest_intersection = intersection;
+                }
+            }
+
+            if (nearest_intersection.hit)
+            {
+                dof_distance = nearest_intersection.depth;
+            }
+            else
+            {
+                // clicked on the skybox: "infinitely" far away
+                dof_distance = std::numeric_limits<Real>::infinity();
+            }
+
+            dirty = true;
+        }
+        // or adjust by scrolling the wheel
+        const auto wheel = GetMouseWheel();
+        if (wheel != 0)
+        {
+            dof_distance += static_cast<Real>(wheel) * fElapsedTime;
+            dof_distance = glm::max(dof_distance, 0.f);
+            dirty = true;
+        }
+
+        auto movement_speed = MOVEMENT_SPEED * (GetKey(olc::Key::SHIFT).bHeld ? 10.f : 1.f);
 
         if (GetKey(olc::Key::W).bHeld)
         {
