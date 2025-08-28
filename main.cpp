@@ -458,7 +458,7 @@ public:
         const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
         DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
 
-        if (GetMouse(olc::Mouse::RIGHT).bHeld)
+        if (GetMouse(olc::Mouse::LEFT).bHeld || GetMouse(olc::Mouse::RIGHT).bHeld)
         {
             const auto delta = GetMousePos() - last_mouse_position;
 
@@ -474,7 +474,7 @@ public:
         }
 
         // adjust the DOF focal distance by clicking anywhere in the scene
-        if (GetMouse(olc::Mouse::MIDDLE).bPressed)
+        if (GetMouse(olc::Mouse::MIDDLE).bPressed || GetKey(olc::Key::F).bPressed)
         {
             const auto pixel = GetMouseX() + GetMouseY() * ScreenWidth();
             // explicit copy to avoid threading issues with the main render loop
@@ -570,13 +570,13 @@ public:
             dirty = true;
         }
 
-        if (GetKey(olc::Key::PGUP).bPressed)
+        if (GetKey(olc::Key::PGUP).bPressed || GetKey(olc::Key::X).bPressed)
         {
             fov_degrees *= .9f;
             fov_degrees = glm::clamp(fov_degrees, 10.f, 170.f);
             dirty = true;
         }
-        if (GetKey(olc::Key::PGDN).bPressed)
+        if (GetKey(olc::Key::PGDN).bPressed || GetKey(olc::Key::Z).bPressed)
         {
             fov_degrees /= .9f;
             fov_degrees = glm::clamp(fov_degrees, 10.f, 170.f);
