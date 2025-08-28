@@ -106,22 +106,6 @@ private:
     std::unique_ptr<olc::Sprite> gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
 
 private:
-    Sphere* sun = new Sphere
-    {
-        glm::vec3{ 100.f, -100.f, 0.f },
-        10.f,
-        PBRMaterial
-        {
-            .albedo = glm::vec3{ .8f, .8f, .8f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-            //.emission = glm::vec3{ .9f, .9f, .5f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .anisotropy = 0.f,
-            .roughness = 0.f,
-        }
-    };
-
     std::vector<Object*> scene_objects = 
     {
         new Sphere
@@ -296,7 +280,7 @@ private:
     Ray* rays = nullptr;
     bool enable_dof = false;
     Real focal_distance = std::numeric_limits<Real>::infinity();
-    Real aperture_radius = 1.f;
+    Real aperture_radius = .1f;
 
     glm::vec3* frame_buffer = nullptr;
     glm::vec3* staging_buffer = nullptr;
@@ -526,7 +510,8 @@ public:
         if (wheel != 0)
         {
             focal_distance += static_cast<Real>(wheel) * fElapsedTime;
-            focal_distance = glm::max(focal_distance, 0.f);
+            // small epsilon required--0.f crashes the program from diskRand()!
+            focal_distance = glm::max(focal_distance, .001f);
             dirty = true;
         }
 
@@ -568,16 +553,19 @@ public:
         if (GetKey(olc::Key::TAB).bPressed)
         {
             enable_dof = !enable_dof;
+            dirty = true;
         }
         if (GetKey(olc::Key::UP).bHeld)
         {
-            aperture_radius += fElapsedTime * movement_speed;
+            aperture_radius += fElapsedTime;
+            // small epsilon required--0.f crashes the program from diskRand()!
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
         if (GetKey(olc::Key::DOWN).bHeld)
         {
-            aperture_radius -= fElapsedTime * movement_speed;
+            aperture_radius -= fElapsedTime;
+            // small epsilon required--0.f crashes the program from diskRand()!
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
@@ -615,6 +603,7 @@ public:
                 if (enable_dof)
                 {
                     const auto disk_sample = glm::diskRand(aperture_radius);
+                    // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
                     ray_jittered.origin += compute_right() * disk_sample.x + UP * disk_sample.y;
                 }
 
