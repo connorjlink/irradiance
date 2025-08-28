@@ -294,9 +294,9 @@ private:
     Real pitch_degrees = 0.f;
     int accumulated_frames = 1;
     Ray* rays = nullptr;
-    bool highlight_dof = false;
+    bool enable_dof = false;
     Real focal_distance = std::numeric_limits<Real>::infinity();
-    Real aperture_size = 1.f;
+    Real aperture_radius = 1.f;
 
     glm::vec3* frame_buffer = nullptr;
     glm::vec3* staging_buffer = nullptr;
@@ -467,8 +467,8 @@ public:
         DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {}, ms/frame: {:.2f}", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", highlight_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 55.f }, std::format("Aperture Size: {:.2f}", aperture_size), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", enable_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 55.f }, std::format("Aperture Size: {:.2f}", aperture_radius), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 65.f }, std::format("FOV: {:.2f}", fov_degrees), olc::YELLOW);
 
         const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
@@ -567,18 +567,18 @@ public:
 
         if (GetKey(olc::Key::TAB).bPressed)
         {
-            highlight_dof = !highlight_dof;
+            enable_dof = !enable_dof;
         }
         if (GetKey(olc::Key::UP).bHeld)
         {
-            aperture_size += fElapsedTime * movement_speed;
-            aperture_size = glm::max(aperture_size, .001f);
+            aperture_radius += fElapsedTime * movement_speed;
+            aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
         if (GetKey(olc::Key::DOWN).bHeld)
         {
-            aperture_size -= fElapsedTime * movement_speed;
-            aperture_size = glm::max(aperture_size, .001f);
+            aperture_radius -= fElapsedTime * movement_speed;
+            aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
 
@@ -612,16 +612,15 @@ public:
                 auto ray_jittered = ray;
                 ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
 
-                total_color += trace(ray_jittered, _bounces);
+                if (enable_dof)
+                {
+                    const auto disk_sample = glm::diskRand(aperture_radius);
+                    ray_jittered.origin += compute_right() * disk_sample.x + UP * disk_sample.y;
+                }
 
                 // TODO: compute defocus amount from aperture size, focal distance, and intersection distance
-                const auto defocus_radius = 1.f;
-                const auto disk_sample = glm::diskRand(aperture_size);
 
-                if (highlight_dof && defocus_radius < .001f)
-                {
-                    total_color *= 1.5f;
-                }
+                total_color += trace(ray_jittered, _bounces);
             }
 
             total_color /= static_cast<Real>(_samples);
