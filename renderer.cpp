@@ -1,5 +1,8 @@
 #include <fstream>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include "glm/gtx/compatibility.hpp"
+
 #include "renderer.h"
 
 // renderer.cpp
@@ -52,6 +55,7 @@ namespace ir
                     .material = material,
                     .depth = t1,
                     .hit = true,
+                    .object = this,
                 };
             }
         }
@@ -59,16 +63,40 @@ namespace ir
         return MISS;
     }
 
+    glm::vec2 Sphere::compute_uv_coordinates(const glm::vec3& point) const
+    {
+        // Spherical coordinates https://en.wikipedia.org/wiki/UV_mapping
+
+        const auto p = glm::normalize(point - center);
+
+        const auto u = .5f + glm::atan2(p.z, p.x) / (2.f * glm::pi<Real>());
+        const auto v = .5f + glm::asin(p.y) / glm::pi<Real>();
+
+        return { u, v };
+    }
+
     RayIntersection Triangle::intersect(const Ray& ray)
     {
-        // Triangle intersection logic to be implemented
+        // TODO: Triangle intersection logic to be implemented
         return RayIntersection{};
+    }
+
+    glm::vec2 Triangle::compute_uv_coordinates(const glm::vec3& point) const
+    {
+        // TODO: UV coordinate computation to be implemented
+        return { 0.f, 0.f };
     }
 
     RayIntersection Quadrilateral::intersect(const Ray& ray)
     {
         // Quadrilateral intersection logic to be implemented
         return RayIntersection{};
+    }
+
+    glm::vec2 Quadrilateral::compute_uv_coordinates(const glm::vec3& point) const
+    {
+        // TODO: UV coordinate computation to be implemented
+        return { 0.f, 0.f };
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.

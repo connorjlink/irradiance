@@ -23,6 +23,7 @@ namespace ir
 
     public:
         virtual RayIntersection intersect(const Ray& ray) = 0;
+        virtual glm::vec2 compute_uv_coordinates(const glm::vec3& point) const = 0;
     };
 
     struct Sphere : public Object
@@ -39,6 +40,7 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
+        glm::vec2 compute_uv_coordinates(const glm::vec3& point) const override;
     };
 
     struct Triangle : public Object
@@ -54,6 +56,7 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
+        glm::vec2 compute_uv_coordinates(const glm::vec3& point) const override;
     };
 
     struct Quadrilateral : public Object
@@ -69,6 +72,7 @@ namespace ir
     
     public:
         RayIntersection intersect(const Ray& ray) override;
+        glm::vec2 compute_uv_coordinates(const glm::vec3& point) const override;
     };
 
     std::vector<Triangle*> load_obj_as_triangles(const std::string& filepath, const PBRMaterial& material);

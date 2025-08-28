@@ -5386,7 +5386,7 @@ namespace olc
 
 		}
 
-		void Set3DProjection(const std::array<float, 16>& mat)
+		void Set3DProjection(const std::array<float, 16>& mat) override
 		{
 			matProjection = mat;
 		}

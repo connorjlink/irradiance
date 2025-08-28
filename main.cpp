@@ -97,6 +97,12 @@ public:
 	}
 
 private:
+    std::unique_ptr<olc::Sprite> skybox = std::make_unique<olc::Sprite>("golden_gate_hills_4k.hdr");
+    std::unique_ptr<olc::Sprite> water = std::make_unique<olc::Sprite>("pexels-enginakyurt-1435752.jpg");
+    std::unique_ptr<olc::Sprite> rock = std::make_unique<olc::Sprite>("pexels-life-of-pix-8892.jpg");
+    std::unique_ptr<olc::Sprite> gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
+
+private:
     Sphere* sun = new Sphere
     {
         glm::vec3{ 100.f, -100.f, 0.f },
@@ -127,6 +133,7 @@ private:
                 .metallicity = 0.f,
                 .anisotropy = 0.f,
                 .roughness = 1.f,
+                .texture = rock.get(),
             }
         },
 
@@ -178,12 +185,28 @@ private:
             1.f,
             PBRMaterial
             {
-                .albedo = glm::vec3{ .56f, .518f, .835f },
+                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 1.f,
+                .anisotropy = 0.f,
+                .roughness = .8f,
+                .texture = gemstone.get(),
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ 2.f, -1.f, 0.f },
+            1.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
                 .metallicity = 0.f,
                 .anisotropy = 0.f,
                 .roughness = 1.f,
+                .texture = water.get(),
             }
         },
         new Sphere
@@ -278,8 +301,6 @@ private:
 
     std::vector<int> index_buffer;
 
-    std::unique_ptr<olc::Sprite> skybox;
-
 private:
     glm::vec3 compute_direction() const
     {
@@ -312,7 +333,7 @@ private:
         return result;
     }
 
-    glm::vec2 compute_uv_coordinates(const glm::vec3& direction) const
+    glm::vec2 compute_skybox_uv_coordinates(const glm::vec3& direction) const
     {
         const auto theta = glm::atan(direction.z, direction.x);
         const auto phi = glm::acos(-direction.y); 
@@ -351,6 +372,7 @@ private:
 
         if (nearest_intersection.hit)
         {
+            // NOTE: evidently cannot draw from the parallelized loop: gets malloc_break seg-faults
             //DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
 
             // for testing only
@@ -364,29 +386,14 @@ private:
                 return nearest_intersection.material.emission;
             }
 
-        #if 0
-            const auto difference = sun->center - nearest_intersection.position;
-            auto in_shadow = false;
-            for (const auto& shadow_candidate : scene_objects)
-            {
-                const auto shadow_ray = Ray{ nearest_intersection.position + nearest_intersection.normal * .001f, glm::normalize(difference) };
-                const auto shadow_intersection = shadow_candidate->intersect(shadow_ray);
+            auto albedo = nearest_intersection.material.albedo;
 
-                if (shadow_intersection.hit)
-                {
-                    in_shadow = true;
-                    break;
-                }
-            }
-            if (in_shadow)
+            if (nearest_intersection.material.texture)
             {
-                const auto direction = glm::normalize(difference);
-                const auto angle = glm::max(glm::dot(direction, nearest_intersection.normal), 0.f);
-                const auto light_contribution = sun->material.emission * (1.f - angle);
-
-                composite *= light_contribution;
+                const auto uv = nearest_intersection.object->compute_uv_coordinates(nearest_intersection.position);
+                const auto sample = nearest_intersection.material.texture->Sample(uv.x, uv.y);
+                albedo = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
             }
-        #endif
                 
             const auto reflection = glm::reflect(ray.direction, nearest_intersection.normal);
 
@@ -404,7 +411,7 @@ private:
             // TODO: incorporate importance sampling / probabilistic reflection
 
             // Fresnel term with Schlick's approximation
-            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, nearest_intersection.material.albedo, nearest_intersection.material.metallicity);
+            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
             // negative direction for non-incident ray
             const auto angle = glm::clamp(glm::dot(-ray.direction, nearest_intersection.normal), 0.f, 1.f);
             const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - angle, 5.f); 
@@ -413,7 +420,7 @@ private:
             const auto specular = F * trace(ray, bounces - 1);
 
             // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
-            const auto brdf = (1.f - nearest_intersection.material.metallicity) * nearest_intersection.material.albedo / glm::pi<Real>();
+            const auto brdf = (1.f - nearest_intersection.material.metallicity) * albedo / glm::pi<Real>();
             // TODO: replace with a proper BRDF
             const auto diffuse = brdf * trace(ray, bounces - 1);
 
@@ -422,7 +429,7 @@ private:
         }
         else
         {
-            glm::vec2 uv = compute_uv_coordinates(ray.direction);
+            const auto uv = compute_skybox_uv_coordinates(ray.direction);
             const auto sample = skybox->Sample(uv.x, uv.y);
             radiance += composite * glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
         }
@@ -444,10 +451,9 @@ public:
             frame.resize(number, glm::vec3{ 0.f });
         }
 
+        // precompute an index sequence to be used for the parallelized for_each render loop
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
-
-        skybox = std::make_unique<olc::Sprite>("golden_gate_hills_4k.hdr");
 
 		return true;
 	}
@@ -716,7 +722,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 3, 3) == olc::OK)
+	if (application.Construct(width, height, 2, 2) == olc::OK)
     {
 		application.Start();
     }

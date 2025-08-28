@@ -6,7 +6,10 @@
 #include <string>
 #include <vector>
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include "glm/glm.hpp"
+
+#include "olcPixelGameEngine.h"
 
 // utility.h
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -52,7 +55,11 @@ namespace ir
 
         /* 0 = light cannot penetrate dielectric, 1 = dielectric does not impede light */
         Real transmission; 
+
+        olc::Sprite* texture = nullptr;
     };
+
+    struct Object;
 
     struct RayIntersection
     {
@@ -61,6 +68,7 @@ namespace ir
         PBRMaterial material;
         Real depth = std::numeric_limits<float>::infinity();
         bool hit;
+        Object* object = nullptr;
     };
 
     // (c) Connor J. Link. Attribution from personal work outside of ISU.
