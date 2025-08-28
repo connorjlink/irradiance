@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <numeric>
 #include <execution>
+#include <memory>
 
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -23,7 +24,7 @@
 
 using namespace ir;
 
-static constexpr Real MOUSE_SENSITIVITY = 5.f;
+static constexpr Real MOUSE_SENSITIVITY = 20.f;
 static constexpr Real MOVEMENT_SPEED = 5.f;
 static constexpr glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
 static constexpr Real SAMPLE_JITTER = .001f;
@@ -122,7 +123,7 @@ private:
             {
                 .albedo = glm::vec3{ .5f, .5f, .5f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 9.f, 9.f, 7.f },
+                .emission = glm::vec3{ 20.f, 20.f, 10.f },
                 .metallicity = 1.f,
                 .anisotropy = 0.f,
                 .roughness = 0.f,
@@ -130,7 +131,7 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ 0.f, -2.f, 5.f },
+            glm::vec3{ 0.f, -4.f, 5.f },
             1.f,
             PBRMaterial
             {
@@ -144,7 +145,49 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ -2.f, 0.f, 5.f },
+            glm::vec3{ 6.f, -1.f, 5.f },
+            1.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .5f, .5f, .5f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 1.f,
+                .anisotropy = 0.f,
+                .roughness = .1f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ 4.f, -1.f, 2.f },
+            1.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .56f, .518f, .835f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.f,
+                .anisotropy = 0.f,
+                .roughness = 1.f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ -4.f, -1.f, 2.f },
+            1.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .56f, .518f, .835f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.f,
+                .anisotropy = 0.f,
+                .roughness = .5f,
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ -2.f, -.5f, 5.f },
             .5f,
             PBRMaterial
             {
@@ -158,7 +201,7 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ 0.f, 0.f, 5.f },
+            glm::vec3{ 0.f, -2.f, 5.f },
             1.f,
             PBRMaterial
             {
@@ -172,7 +215,7 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ 3.f, 0.f, 5.f },
+            glm::vec3{ 3.f, -1.5f, 5.f },
             1.5f,
             PBRMaterial
             {
@@ -186,14 +229,14 @@ private:
         },
         new Sphere
         {
-            glm::vec3{ 0.f, 1003.f, 5.f },
+            glm::vec3{ 0.f, 1000.f, 5.f },
             1000.f,
             PBRMaterial
             {
                 .albedo = glm::vec3{ .25f, .5f, .75f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.1f,
+                .metallicity = 0.f,
                 .anisotropy = 0.f,
                 .roughness = 1.f,
             }
@@ -219,6 +262,8 @@ private:
     CircularBuffer<std::vector<glm::vec3>, FRAME_HISTORY> frame_history;
 
     std::vector<int> index_buffer;
+
+    std::unique_ptr<olc::Sprite> skybox;
 
 private:
     glm::vec3 compute_direction() const
@@ -250,6 +295,19 @@ private:
         result /= static_cast<Real>(FRAME_HISTORY);
 
         return result;
+    }
+
+    glm::vec2 compute_uv_coordinates(const glm::vec3& direction) const
+    {
+        const auto theta = glm::atan(direction.z, direction.x);
+        const auto phi = glm::acos(-direction.y); 
+
+        auto u = (theta + glm::pi<Real>()) / (2.f * glm::pi<Real>());
+        auto v = phi / glm::pi<Real>();
+
+        u = 1.f - u;
+
+        return { u, v };
     }
 
     glm::vec3 trace(Ray& ray, int bounces)
@@ -321,7 +379,8 @@ private:
             if (glm::dot(random_in_unit_sphere, nearest_intersection.normal) < 0.f)
             {
                 // needs to always face outward relative to the surface normal
-                random_in_unit_sphere = -random_in_unit_sphere;
+                // TODO: figure out why this makes rough surfaces too dark when lit directly by emissive materials
+                //random_in_unit_sphere = -random_in_unit_sphere;
             }
 
             // move to next bounce
@@ -344,17 +403,13 @@ private:
             const auto diffuse = brdf * trace(ray, bounces - 1);
 
             composite *= diffuse + specular;
-
             radiance += composite;
-
-            // TODO: cast rays toward each surface (and emitter) for global illumination
         }
         else
         {
-            // TODO: environment cube map sampling
-            // accent color for sky
-            //radiance += composite * glm::vec3{ 143.f / 255.f, 132.f / 255.f, 213.f / 255.f };
-            radiance += composite * glm::vec3{ 0.f, 0.f, 0.f };
+            glm::vec2 uv = compute_uv_coordinates(ray.direction);
+            const auto sample = skybox->Sample(uv.x, uv.y);
+            radiance += composite * glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
         }
 
         return radiance;
@@ -376,6 +431,8 @@ public:
 
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
+
+        skybox = std::make_unique<olc::Sprite>("golden_gate_hills_4k.hdr");
 
 		return true;
 	}
