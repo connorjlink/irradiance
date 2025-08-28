@@ -117,8 +117,23 @@ private:
     {
         new Sphere
         {
+            glm::vec3{ 120.f, -120.f, 100.f },
+            120.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.f,
+                .anisotropy = 0.f,
+                .roughness = 1.f,
+            }
+        },
+
+        new Sphere
+        {
             glm::vec3{ 120.f, -120.f, 0.f },
-            100.f,
+            50.f,
             PBRMaterial
             {
                 .albedo = glm::vec3{ .5f, .5f, .5f },
@@ -534,8 +549,14 @@ public:
             }
 
             total_color /= static_cast<Real>(_samples);
-            staging_buffer[i] = total_color;
-            frame_buffer[i] += total_color;
+
+            // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
+            const auto tone_mapped = total_color / (total_color + glm::vec3{ 1.f });
+            // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
+            const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
+
+            staging_buffer[i] = gamma_corrected;
+            frame_buffer[i] += gamma_corrected;
         });
 
         if (!dirty && last_dirty)
@@ -590,13 +611,7 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto color = compute_average(x + y * ScreenWidth());
-
-                    // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
-                    const auto tone_mapped = color / (color + glm::vec3{ 1.f });
-                    // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
-                    const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
-
-                    Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
+                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
                 }
             }
         }
@@ -606,14 +621,8 @@ public:
             {
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
-                    const auto averaged_color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
-
-                    // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
-                    const auto tone_mapped = averaged_color / (averaged_color + glm::vec3{ 1.f });
-                    // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
-                    const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
-
-                    Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
+                    const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
                 }
             }
         }
