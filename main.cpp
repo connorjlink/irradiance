@@ -104,6 +104,7 @@ private:
     std::unique_ptr<olc::Sprite> water = std::make_unique<olc::Sprite>("pexels-enginakyurt-1435752.jpg");
     std::unique_ptr<olc::Sprite> rock = std::make_unique<olc::Sprite>("pexels-life-of-pix-8892.jpg");
     std::unique_ptr<olc::Sprite> gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
+    std::unique_ptr<olc::Sprite> wood = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129731.jpg");
 
 private:
     std::vector<Object*> scene_objects = 
@@ -111,7 +112,7 @@ private:
         new Sphere
         {
             glm::vec3{ 120.f, -120.f, 100.f },
-            120.f,
+            60.f,
             PBRMaterial
             {
                 .albedo = glm::vec3{ 0.f, 0.f, 0.f },
@@ -194,6 +195,21 @@ private:
                 .anisotropy = 0.f,
                 .roughness = 1.f,
                 .texture = water.get(),
+            }
+        },
+        new Sphere
+        {
+            glm::vec3{ -2.f, -1.f, -1.f },
+            1.f,
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = .9f,
+                .anisotropy = 0.f,
+                .roughness = .9f,
+                .texture = wood.get(),
             }
         },
         new Sphere
@@ -557,14 +573,14 @@ public:
         }
         if (GetKey(olc::Key::UP).bHeld)
         {
-            aperture_radius += fElapsedTime;
+            aperture_radius += fElapsedTime * .1f;
             // small epsilon required--0.f crashes the program from diskRand()!
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
         if (GetKey(olc::Key::DOWN).bHeld)
         {
-            aperture_radius -= fElapsedTime;
+            aperture_radius -= fElapsedTime * .1f;
             // small epsilon required--0.f crashes the program from diskRand()!
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
@@ -605,6 +621,9 @@ public:
                     const auto disk_sample = glm::diskRand(aperture_radius);
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
                     ray_jittered.origin += compute_right() * disk_sample.x + UP * disk_sample.y;
+                    // TODO: ask Schaeffer about this step. It works correctly per Ray Tracing in One Weekend, but not sure why.
+                    const auto focal_point = ray.origin + ray.direction * focal_distance;
+                    ray_jittered.direction = glm::normalize(focal_point - ray_jittered.origin);
                 }
 
                 // TODO: compute defocus amount from aperture size, focal distance, and intersection distance
