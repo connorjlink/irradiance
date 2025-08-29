@@ -22,6 +22,7 @@
 #include "utility.h"
 #include "renderer.h"
 #include "scenes.h"
+#include "meshes.h"
 
 // main.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -36,6 +37,8 @@ static constexpr Real SAMPLE_JITTER = .001f;
 static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr int FRAME_HISTORY = 5;
+
+static constexpr bool ENABLE_SKYBOX = false;
 
 int _bounces = 2;
 int _samples = 5;
@@ -104,7 +107,7 @@ private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
     bool last_dirty = false;
-    glm::vec3 position = { 0.f, 0.f, 0.f };
+    glm::vec3 position = { 0.f, 0.f, -0.99f };
     Real fov_degrees = 90.f;
     Real yaw_degrees = 0.f;
     Real pitch_degrees = 0.f;
@@ -251,9 +254,16 @@ private:
         }
         else
         {
-            const auto uv = compute_skybox_uv_coordinates(ray.direction);
-            const auto sample = skybox->Sample(uv.x, uv.y);
-            radiance += composite * glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
+            if constexpr (ENABLE_SKYBOX)
+            {
+                const auto uv = compute_skybox_uv_coordinates(ray.direction);
+                const auto sample = skybox->Sample(uv.x, uv.y);
+                radiance += composite * glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
+            }
+            else
+            {
+                return glm::vec3{ 0.f };
+            }
         }
 
         return radiance;
@@ -278,11 +288,35 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        scene_objects = test_spheres();
+        scene_objects = cornell_box();
 
+        scene_objects.emplace_back(new Sphere
+        { 
+            glm::vec3{ .5f, .6f, .5f }, 
+            .4f, 
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .9f, .9f, .9f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = .9f,
+                .anisotropy = 0.f,
+                .roughness = .1f,
+            }
+        });
+
+        const auto mesh = cube(glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }), PBRMaterial
+        {
+            .albedo = glm::vec3{ .9f, .9f, .9f },
+            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = .5f,
+        });
+        scene_objects.insert(scene_objects.end(), mesh.begin(), mesh.end());
         //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
-        //scene_objects.insert(scene_objects.end(), cube.begin(), cube.end());
         //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
         //scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
 

@@ -12,12 +12,12 @@
 
 namespace ir
 {
-    std::vector<Object*> icosphere(const glm::mat4& transform = glm::identity<glm::mat4>());
-    std::vector<Object*> torus(const glm::mat4& transform = glm::identity<glm::mat4>());
-    std::vector<Object*> cube(const glm::mat4& transform = glm::identity<glm::mat4>());
-    std::vector<Object*> cylinder(const glm::mat4& transform = glm::identity<glm::mat4>());
-    std::vector<Object*> teapot(const glm::mat4& transform = glm::identity<glm::mat4>());
-    std::vector<Object*> monkey(const glm::mat4& transform = glm::identity<glm::mat4>());
+    std::vector<Object*> icosphere(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
+    std::vector<Object*> torus(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
+    std::vector<Object*> cube(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
+    std::vector<Object*> cylinder(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
+    std::vector<Object*> teapot(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
+    std::vector<Object*> monkey(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
 }
 
 #endif 

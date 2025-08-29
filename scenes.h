@@ -265,7 +265,7 @@ namespace ir
                 glm::vec3{ -1.f, -1.f, -1.f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ .25f, .25f, .75f },
+                    .albedo = glm::vec3{ .75f, .75f, .75f },
                     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
@@ -280,7 +280,7 @@ namespace ir
                 glm::vec3{ -1.f, -1.f, 1.f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ .75f, .75f, .75f },
+                    .albedo = glm::vec3{ .25f, .75f, .25f },
                     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
@@ -295,7 +295,8 @@ namespace ir
                 glm::vec3{ 1.f, -1.f, -1.f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ .75f, .75f, .75f },
+                    //
+                    .albedo = glm::vec3{ .25f, .25f, .75f },
                     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
@@ -328,6 +329,21 @@ namespace ir
                     .albedo = glm::vec3{ .75f, .75f, .75f },
                     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .anisotropy = 0.f,
+                    .roughness = 1.f,
+                }
+            },
+            new Quadrilateral
+            {
+                glm::vec3{ .75f, -.99f, .75f },
+                glm::vec3{ -.75f, -.99f, .75f },
+                glm::vec3{ .75f, -.99f, -.75f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                    .emission = glm::vec3{ 1e4f, 1e4f, 1e4f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
