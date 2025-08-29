@@ -121,7 +121,7 @@ private:
 
     std::vector<int> index_buffer;
 
-    std::vector<Object*> scene_objects = test_spheres();
+    std::vector<Object*> scene_objects;
 
 private:
     glm::vec3 compute_direction() const
@@ -276,6 +276,9 @@ public:
         // precompute an index sequence to be used for the parallelized for_each render loop
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
+
+        initialize_textures();
+        scene_objects = test_spheres();
 
         //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
