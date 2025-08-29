@@ -38,11 +38,16 @@ namespace ir
 
             if (t1 > 0.f)
             {
-                const auto via = ray.direction * t1;
-                const auto intersection = ray.origin + via;
+                const auto intersection = ray.origin + ray.direction * t1;
 
                 const auto reverse = intersection - center;
                 const auto normal = glm::normalize(reverse);
+
+                // Spherical coordinates https://en.wikipedia.org/wiki/UV_mapping
+                const auto p = glm::normalize(intersection - center);
+
+                const auto u = .5f + glm::atan2(p.z, p.x) / (2.f * glm::pi<Real>());
+                const auto v = .5f + glm::asin(p.y) / glm::pi<Real>();
 
                 return
                 {
@@ -52,23 +57,12 @@ namespace ir
                     .depth = t1,
                     .hit = true,
                     .object = this,
+                    .uv = { u, v },
                 };
             }
         }
 
         return MISS;
-    }
-
-    glm::vec2 Sphere::compute_uv_coordinates(const glm::vec3& point) const
-    {
-        // Spherical coordinates https://en.wikipedia.org/wiki/UV_mapping
-
-        const auto p = glm::normalize(point - center);
-
-        const auto u = .5f + glm::atan2(p.z, p.x) / (2.f * glm::pi<Real>());
-        const auto v = .5f + glm::asin(p.y) / glm::pi<Real>();
-
-        return { u, v };
     }
 
     RayIntersection Triangle::intersect(const Ray& ray)
@@ -77,7 +71,7 @@ namespace ir
 
         const auto test = glm::cross(ray.direction, edge1);
 
-        // run Cramer's rule to intersect
+        // run Cramer's rule to intersect and get barycentric coordinates as UV
         const auto determinant = glm::dot(edge0, test);
         if (glm::abs(determinant) < .001f)
         {
@@ -121,24 +115,8 @@ namespace ir
             .depth = t,
             .hit = true,
             .object = this,
+            .uv = { u, v },
         };
-    }
-
-    glm::vec2 Triangle::compute_uv_coordinates(const glm::vec3& point) const
-    {
-        // Barycentric coordinates https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
-        // variant of Cramer's rule as used in intersect()
-
-        const auto difference = point - v0;
-
-        const auto d20 = glm::dot(difference, edge0);
-        const auto d21 = glm::dot(difference, edge1);
-
-        const auto v = ((d11 * d20) - (d01 * d21)) / denominator;
-        const auto w = ((d00 * d21) - (d01 * d20)) / denominator;
-        const auto u = 1.f - v - w;
-
-        return u * uv0 + v * uv1 + w * uv2;
     }
 
     RayIntersection Quadrilateral::intersect(const Ray& ray)
@@ -163,10 +141,11 @@ namespace ir
         const auto intersection = ray.origin + ray.direction * t;
 
         const auto plane_intersection = intersection - v0;
-        const auto alpha = glm::dot(reciprocal, glm::cross(plane_intersection, v1));
-        const auto beta = glm::dot(reciprocal, glm::cross(v2, plane_intersection));
+        // equivalent to the alpha, beta products in RTTNW quad algorithm
+        const auto u = glm::dot(reciprocal, glm::cross(plane_intersection, v1));
+        const auto v = glm::dot(reciprocal, glm::cross(v2, plane_intersection));
 
-        if (alpha < 0.f || alpha > 1.f || beta < 0.f || beta > 1.f)
+        if (u < 0.f || u > 1.f || v < 0.f || v > 1.f)
         {
             // outside
             return MISS;
@@ -180,13 +159,8 @@ namespace ir
             .depth = t,
             .hit = true,
             .object = this,
+            .uv = { u, v},
         };
-    }
-
-    glm::vec2 Quadrilateral::compute_uv_coordinates(const glm::vec3& point) const
-    {
-        // TODO: UV coordinate computation to be implemented
-        return { 0.f, 0.f };
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.

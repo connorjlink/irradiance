@@ -69,6 +69,7 @@ namespace ir
         Real depth = std::numeric_limits<float>::infinity();
         bool hit;
         Object* object = nullptr;
+        glm::vec2 uv;
     };
 
     // (c) Connor J. Link. Attribution from personal work outside of ISU.

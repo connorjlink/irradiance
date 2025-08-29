@@ -417,7 +417,7 @@ private:
 
             if (nearest_intersection.material.texture)
             {
-                const auto uv = nearest_intersection.object->compute_uv_coordinates(nearest_intersection.position);
+                const auto& uv = nearest_intersection.uv;
                 const auto sample = nearest_intersection.material.texture->Sample(uv.x, uv.y);
                 albedo = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
             }
