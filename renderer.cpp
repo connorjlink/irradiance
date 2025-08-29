@@ -166,7 +166,7 @@ namespace ir
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
     // Utility function that does not meaningfully affect project functionality.
-    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material)
+    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material, const glm::mat4& transform)
     {
         std::vector<Object*> objects{};
 
@@ -193,7 +193,10 @@ namespace ir
                 const auto y = std::stof(tokens[2]);
                 const auto z = std::stof(tokens[3]);
 
-                vertices.emplace_back(x, y, z);
+                const auto vector = glm::vec4{ x, y, z, 1.f };
+                const auto transformed = transform * vector;
+
+                vertices.emplace_back(transformed.x, transformed.y, transformed.z);
             }
             else if (tokens[0] == "f" && tokens.size() >= 4)
             {

@@ -310,7 +310,7 @@ private:
         new Quadrilateral
         {
             glm::vec3{ 50.f, 0.f, 0.f },
-            glm::vec3{ 50.f, 50.f, 0.f },
+            glm::vec3{ 50.f, -50.f, 0.f },
             glm::vec3{ 50.f, 0.f, 50.f },
             PBRMaterial
             {
@@ -516,35 +516,35 @@ public:
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
-        icosphere = load_obj("icosphere.obj", PBRMaterial
-        {
-            .albedo = glm::vec3{ 1.f, .6f, 0.f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .anisotropy = 0.f,
-            .roughness = 1.f,
-        });
+        // icosphere = load_obj("icosphere.obj", PBRMaterial
+        // {
+        //     .albedo = glm::vec3{ 1.f, .6f, 0.f },
+        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .metallicity = 0.f,
+        //     .anisotropy = 0.f,
+        //     .roughness = 1.f,
+        // }, glm::identity<glm::mat4>());
 
-        torus = load_obj("torus.obj", PBRMaterial
-        {
-            .albedo = glm::vec3{ 0.f, 1.f, 6.f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .anisotropy = 0.f,
-            .roughness = 1.f,
-        });
+        // torus = load_obj("torus.obj", PBRMaterial
+        // {
+        //     .albedo = glm::vec3{ 0.f, 1.f, 6.f },
+        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .metallicity = 0.f,
+        //     .anisotropy = 0.f,
+        //     .roughness = 1.f,
+        // }, glm::identity<glm::mat4>());
 
-        cube = load_obj("cube.obj", PBRMaterial
-        {
-            .albedo = glm::vec3{ 1.f, 0.f, 1.f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .anisotropy = 0.f,
-            .roughness = 0.f,
-        });
+        // cube = load_obj("cube.obj", PBRMaterial
+        // {
+        //     .albedo = glm::vec3{ 1.f, 0.f, 1.f },
+        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .metallicity = 0.f,
+        //     .anisotropy = 0.f,
+        //     .roughness = 0.f,
+        // }, glm::identity<glm::mat4>());
 
         cylinder = load_obj("cylinder.obj", PBRMaterial
         {
@@ -554,24 +554,24 @@ public:
             .metallicity = 0.f,
             .anisotropy = 0.f,
             .roughness = 1.f,
-        });
+            .texture = wood.get(),
+        }, glm::translate(glm::identity<glm::mat4>(), glm::vec3{ 5.f, -5.f, 5.f }));
 
-        teapot = load_obj("teapot.obj", PBRMaterial
-        {
-            .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 1.f,
-            .anisotropy = 0.f,
-            .roughness = 0.f,
-        });
+        // teapot = load_obj("teapot.obj", PBRMaterial
+        // {
+        //     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .metallicity = 1.f,
+        //     .anisotropy = 0.f,
+        //     .roughness = 0.f,
+        // }, glm::identity<glm::mat4>());
 
         //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
         //scene_objects.insert(scene_objects.end(), cube.begin(), cube.end());
-        //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
-        scene_objects = {};
-        scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
+        scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
+        //scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
 
 		return true;
 	}
@@ -917,7 +917,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }

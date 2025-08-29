@@ -14,7 +14,7 @@ run:
 
 release:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
-	./irradiance -width=300 -height=300 -bounces=2 -samples=1
+	./irradiance -width=500 -height=500 -bounces=3 -samples=1
 
 clean:
 	rm -f irradiance

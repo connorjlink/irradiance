@@ -97,7 +97,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
     }; 
 
-    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material);
+    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material, const glm::mat4& transform);
 }
 
 #endif
