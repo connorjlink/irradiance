@@ -38,7 +38,7 @@ static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr int FRAME_HISTORY = 5;
 
-static constexpr bool ENABLE_SKYBOX = false;
+static constexpr bool ENABLE_SKYBOX = true;
 
 int _bounces = 2;
 int _samples = 5;
@@ -178,9 +178,6 @@ private:
             return glm::vec3{ 0.f };
         }
 
-        glm::vec3 composite = glm::vec3{ 1.f };
-        glm::vec3 radiance = glm::vec3{ 0.f };
-
         // TODO: bounding volume hierarchy acceleration structure
 
         // sort to find the nearest intersection for correct geometry rendering
@@ -227,7 +224,7 @@ private:
             {
                 // needs to always face outward relative to the surface normal
                 // TODO: figure out why this makes rough surfaces too dark when lit directly by emissive materials
-                //random_in_unit_sphere = -random_in_unit_sphere;
+                random_in_unit_sphere = -random_in_unit_sphere;
             }
 
             // move to next bounce
@@ -241,16 +238,17 @@ private:
             const auto angle = glm::clamp(glm::dot(-ray.direction, nearest_intersection.normal), 0.f, 1.f);
             const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - angle, 5.f); 
 
-            ray.direction =  glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
-            const auto specular = F * trace(ray, bounces - 1);
+            ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+            const auto indirect = trace(ray, bounces - 1);
 
+            const auto specular = F * indirect;
+            
             // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
             const auto brdf = (1.f - nearest_intersection.material.metallicity) * albedo / glm::pi<Real>();
             // TODO: replace with a proper BRDF
-            const auto diffuse = brdf * trace(ray, bounces - 1);
+            const auto diffuse = brdf * indirect;
 
-            composite *= diffuse + specular;
-            radiance += composite;
+            return diffuse + specular;
         }
         else
         {
@@ -258,15 +256,11 @@ private:
             {
                 const auto uv = compute_skybox_uv_coordinates(ray.direction);
                 const auto sample = skybox->Sample(uv.x, uv.y);
-                radiance += composite * glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
-            }
-            else
-            {
-                return glm::vec3{ 0.f };
+                return glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
             }
         }
 
-        return radiance;
+        return glm::vec3{ 0.f };
     };
 
 public:
@@ -288,7 +282,7 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        scene_objects = cornell_box();
+        scene_objects = test_spheres();
 
         scene_objects.emplace_back(new Sphere
         { 
@@ -315,6 +309,7 @@ public:
             .roughness = .5f,
         });
         scene_objects.insert(scene_objects.end(), mesh.begin(), mesh.end());
+
         //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
         //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
