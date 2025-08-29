@@ -223,13 +223,6 @@ namespace ir
                     const auto face2 = std::stoi(tokens[3]);
                     const auto face3 = std::stoi(tokens[4]);
 
-                    for (auto i = 0; i < vertices.size(); i++)
-                    {
-                        auto vert = vertices[i];
-                        std::println("i = {}, v({}, {}, {})", i, vert.x, vert.y, vert.z);
-                    }
-                    std::println("--------");
-
                     // OBJ format note: consecutive vertices connected in polygon specification per https://en.wikipedia.org/wiki/Wavefront_.obj_file
                     objects.emplace_back(new Quadrilateral
                     {
