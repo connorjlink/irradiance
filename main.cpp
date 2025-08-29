@@ -630,7 +630,7 @@ public:
             else
             {
                 // clicked on the skybox: "infinitely" far away
-                focal_distance = std::numeric_limits<Real>::max();
+                focal_distance = std::numeric_limits<Real>::infinity();
             }
 
             dirty = true;
