@@ -573,14 +573,14 @@ public:
         }
         if (GetKey(olc::Key::UP).bHeld)
         {
-            aperture_radius += fElapsedTime * .1f;
+            aperture_radius += fElapsedTime * .5f;
             // small epsilon required--0.f crashes the program from diskRand()!
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
         if (GetKey(olc::Key::DOWN).bHeld)
         {
-            aperture_radius -= fElapsedTime * .1f;
+            aperture_radius -= fElapsedTime * .5f;
             // small epsilon required--0.f crashes the program from diskRand()!
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
@@ -626,10 +626,14 @@ public:
                     ray_jittered.direction = glm::normalize(focal_point - ray_jittered.origin);
                 }
 
-                // TODO: compute defocus amount from aperture size, focal distance, and intersection distance
-
                 total_color += trace(ray_jittered, _bounces);
             }
+
+            // smart NaN check per https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#playingwithimportancesampling
+            if (total_color != total_color) 
+            {
+                total_color = glm::vec3{ 0.f };
+            } 
 
             total_color /= static_cast<Real>(_samples);
 
@@ -799,7 +803,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 2, 2) == olc::OK)
+	if (application.Construct(width, height, 1, 1, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
