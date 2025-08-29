@@ -75,13 +75,22 @@ namespace ir
     struct Quadrilateral : public Object
     {
     public:
+        // v0 is a shared origin like Q from Ray Tracing in One Weekend, v1 and v2 are edge vectors therefrom to form a parallelogram
         glm::vec3 v0, v1, v2;
+        glm::vec3 normal;
+        // Ax + By + Cz = D (constant)
+        Real constant;
+        glm::vec3 reciprocal;
+
 
     public:
         Quadrilateral(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const PBRMaterial& material)
             : v0{ v0 }, v1{ v1 }, v2{ v2 }, Object{ material }
         {
-            
+            const auto orthogonal = glm::cross(v1, v2);
+            normal = glm::normalize(orthogonal);
+            constant = glm::dot(normal, v0);
+            reciprocal = orthogonal / glm::dot(orthogonal, orthogonal);
         }
     
     public:

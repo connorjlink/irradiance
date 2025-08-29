@@ -76,9 +76,9 @@ namespace ir
         // Modified Möller-Trumbore from https://en.m.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
 
         const auto test = glm::cross(ray.direction, edge1);
+
         // run Cramer's rule to intersect
         const auto determinant = glm::dot(edge0, test);
-
         if (glm::abs(determinant) < .001f)
         {
             // parallel
@@ -105,7 +105,6 @@ namespace ir
         }
 
         const auto t = glm::dot(edge1, q) * inverse_determinant;
-        
         if (t <= .001f)
         {
             // behind
@@ -144,8 +143,44 @@ namespace ir
 
     RayIntersection Quadrilateral::intersect(const Ray& ray)
     {
-        // Quadrilateral intersection logic to be implemented
-        return RayIntersection{};
+        // quad intersection from https://raytracing.github.io/books/RayTracingTheNextWeek.html
+        // finds the plane containing the quad, then intersects the plane and verifies quad boundaries
+
+        const auto denominator = glm::dot(normal, ray.direction);
+        if (glm::abs(denominator) < .001f)
+        {
+            // parallel
+            return MISS;
+        }
+
+        const auto t = (constant - glm::dot(normal, ray.origin)) / denominator;
+        if (t <= .001f)
+        {
+            // behind
+            return MISS;
+        }
+
+        const auto intersection = ray.origin + ray.direction * t;
+
+        const auto plane_intersection = intersection - v0;
+        const auto alpha = glm::dot(reciprocal, glm::cross(plane_intersection, v1));
+        const auto beta = glm::dot(reciprocal, glm::cross(v2, plane_intersection));
+
+        if (alpha < 0.f || alpha > 1.f || beta < 0.f || beta > 1.f)
+        {
+            // outside
+            return MISS;
+        }
+
+        return 
+        {
+            .position = intersection,
+            .normal = normal,
+            .material = material,
+            .depth = t,
+            .hit = true,
+            .object = this,
+        };
     }
 
     glm::vec2 Quadrilateral::compute_uv_coordinates(const glm::vec3& point) const
