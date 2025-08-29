@@ -82,9 +82,12 @@ namespace ir
 
     public:
         Quadrilateral(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const PBRMaterial& material)
-            : v0{ v0 }, v1{ v1 }, v2{ v2 }, Object{ material }
+            : v0{ v0 }, Object{ material }
         {
-            const auto orthogonal = glm::cross(v1, v2);
+            this->v1 = v0 - v1;
+            this->v2 = v0 - v2;
+
+            const auto orthogonal = glm::cross(this->v1, this->v2);
             normal = glm::normalize(orthogonal);
             constant = glm::dot(normal, v0);
             reciprocal = orthogonal / glm::dot(orthogonal, orthogonal);
@@ -92,9 +95,9 @@ namespace ir
     
     public:
         RayIntersection intersect(const Ray& ray) override;
-    };
+    }; 
 
-    std::vector<Triangle*> load_obj_as_triangles(const std::string& filepath, const PBRMaterial& material);
+    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material);
 }
 
 #endif

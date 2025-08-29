@@ -106,9 +106,9 @@ private:
     std::unique_ptr<olc::Sprite> gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
     std::unique_ptr<olc::Sprite> wood = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129731.jpg");
 
-    std::vector<Triangle*> icosphere;
-    std::vector<Triangle*> cube;
-    std::vector<Triangle*> torus;
+    std::vector<Object*> icosphere;
+    std::vector<Object*> cube;
+    std::vector<Object*> torus;
 
 private:
     std::vector<Object*> scene_objects = 
@@ -304,6 +304,38 @@ private:
                 .roughness = .5f,
                 .texture = gemstone.get(),
             }
+        },
+        new Quadrilateral
+        {
+            glm::vec3{ 50.f, 0.f, 0.f },
+            glm::vec3{ 50.f, 50.f, 0.f },
+            glm::vec3{ 50.f, 0.f, 50.f },
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .5f, .5f, .5f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.f,
+                .anisotropy = 0.f,
+                .roughness = 1.f,
+                .texture = wood.get(),
+            }
+        },
+        new Quadrilateral
+        {
+            glm::vec3{ 1.f, -10.f, -1.f },
+            glm::vec3{ -1.f, -10.f, -1.f },
+            glm::vec3{ 1.f, -10.f, 1.f },
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .5f, .5f, .5f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.f,
+                .anisotropy = 0.f,
+                .roughness = 1.f,
+                .texture = water.get(),
+            }
         }
     };
 
@@ -482,7 +514,7 @@ public:
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
-        icosphere = load_obj_as_triangles("icosphere.obj", PBRMaterial
+        icosphere = load_obj("icosphere.obj", PBRMaterial
         {
             .albedo = glm::vec3{ 1.f, .6f, 0.f },
             .absorption = glm::vec3{ 0.f, 0.f, 0.f },
@@ -492,11 +524,7 @@ public:
             .roughness = 1.f,
         });
 
-        scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
-
-        // TODO: modify obj loader to handle quads and triangles generically
-
-        // torus = load_obj_as_quads("torus.obj", PBRMaterial
+        // torus = load_obj("torus.obj", PBRMaterial
         // {
         //     .albedo = glm::vec3{ 0.f, 1.f, 6.f },
         //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
@@ -506,15 +534,19 @@ public:
         //     .roughness = 1.f,
         // });
 
-        // cube = load_obj_as_quads("cube.obj", PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ 6.f, 0.f, 1.f },
-        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 0.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = 1.f,
-        // });
+        cube = load_obj("cube.obj", PBRMaterial
+        {
+            .albedo = glm::vec3{ 1.f, 0.f, 1.f },
+            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = 0.f,
+        });
+
+        //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
+        //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
+        scene_objects.insert(scene_objects.end(), cube.begin(), cube.end());
 
 		return true;
 	}

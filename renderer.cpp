@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cctype>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/compatibility.hpp"
@@ -159,20 +160,20 @@ namespace ir
             .depth = t,
             .hit = true,
             .object = this,
-            .uv = { u, v},
+            .uv = { u, v },
         };
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
     // Utility function that does not meaningfully affect project functionality.
-    std::vector<Triangle*> load_obj_as_triangles(const std::string& filepath, const PBRMaterial& material)
+    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material)
     {
-        std::vector<Triangle*> triangles{};
+        std::vector<Object*> objects{};
 
         std::ifstream file(filepath);
         if (!file.good())
         {
-            return triangles;
+            return objects;
         }
 
         std::vector<glm::vec3> vertices{};
@@ -180,7 +181,7 @@ namespace ir
         std::string line;
         while (std::getline(file, line))
         {
-            const auto tokens = split(line, " ");
+            auto tokens = split(line, " ");
             if (tokens.empty()) 
             {
                 continue;
@@ -188,22 +189,60 @@ namespace ir
 
             if (tokens[0] == "v" && tokens.size() >= 4)
             {
-                float x = std::stof(tokens[1]);
-                float y = std::stof(tokens[2]);
-                float z = std::stof(tokens[3]);
+                const auto x = std::stof(tokens[1]);
+                const auto y = std::stof(tokens[2]);
+                const auto z = std::stof(tokens[3]);
 
                 vertices.emplace_back(x, y, z);
             }
             else if (tokens[0] == "f" && tokens.size() >= 4)
             {
-                int face0 = std::stoi(tokens[1]);
-                int face1 = std::stoi(tokens[2]);
-                int face2 = std::stoi(tokens[3]);
+                if (tokens.size() == 4)
+                {
+                    // triangle, 3 vertices to form the face
+                    const auto face0 = std::stoi(tokens[1]);
+                    const auto face1 = std::stoi(tokens[2]);
+                    const auto face2 = std::stoi(tokens[3]);
 
-                triangles.emplace_back(new Triangle{ vertices[face0 - 1], vertices[face1 - 1], vertices[face2 - 1], glm::vec2{ 0.f, 0.f }, glm::vec2{ 0.f, 1.f }, glm::vec2{ 1.f, 1.f }, material });
+                    objects.emplace_back(new Triangle
+                    { 
+                        vertices[face0 - 1], 
+                        vertices[face1 - 1], 
+                        vertices[face2 - 1], 
+                        glm::vec2{ 0.f, 0.f }, 
+                        glm::vec2{ 0.f, 1.f }, 
+                        glm::vec2{ 1.f, 1.f }, 
+                        material,
+                    });
+                }
+                else if (tokens.size() == 5)
+                {
+                    // quadrilateral, 4 vertices to form the face
+                    const auto face0 = std::stoi(tokens[1]);
+                    const auto face1 = std::stoi(tokens[2]);
+                    const auto face2 = std::stoi(tokens[3]);
+                    const auto face3 = std::stoi(tokens[4]);
+
+                    for (auto i = 0; i < vertices.size(); i++)
+                    {
+                        auto vert = vertices[i];
+                        std::println("i = {}, v({}, {}, {})", i, vert.x, vert.y, vert.z);
+                    }
+                    std::println("--------");
+
+                    // OBJ format note: consecutive vertices connected in polygon specification per https://en.wikipedia.org/wiki/Wavefront_.obj_file
+                    objects.emplace_back(new Quadrilateral
+                    {
+                        vertices[face0 - 1],
+                        vertices[face1 - 1],
+                        vertices[face3 - 1],
+                        material,
+                    });
+                }
+                
             }
         }
 
-        return triangles;
+        return objects;
     }
 }
