@@ -284,17 +284,20 @@ private:
         },
         new Triangle
         {
-            glm::vec3{ -50.f, 2.f, 50.f },
+            glm::vec3{ -50.f, 2.f, 5.f },
             glm::vec3{ 50.f, -50.f, 50.f },
             glm::vec3{ 0.f, 2.f, 50.f },
+            glm::vec2{ 0.f, 1.f },
+            glm::vec2{ 1.f, 0.f },
+            glm::vec2{ .5f, 1.f },
             PBRMaterial
             {
                 .albedo = glm::vec3{ .5f, .5f, .5f },
                 .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
+                .metallicity = .5f,
                 .anisotropy = 0.f,
-                .roughness = 1.f,
+                .roughness = .5f,
                 .texture = gemstone.get(),
             }
         }

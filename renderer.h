@@ -47,16 +47,23 @@ namespace ir
     {
     public:   
         glm::vec3 v0, v1, v2;
+        glm::vec2 uv0, uv1, uv2;
         glm::vec3 edge0, edge1;
+        Real d00, d01, d11;
+        Real denominator;
         glm::vec3 normal;
 
     public:
-        Triangle(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const PBRMaterial& material)
-            : v0{ v0 }, v1{ v1 }, v2{ v2 }, Object{ material }
+        Triangle(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, const PBRMaterial& material)
+            : v0{ v0 }, v1{ v1 }, v2{ v2 }, uv0{ uv0 }, uv1{ uv1 }, uv2{ uv2 }, Object{ material }
         {
             // cache to avoid recomputing per intersection
             edge0 = v1 - v0;
             edge1 = v2 - v0;
+            d00 = glm::dot(edge0, edge0);
+            d01 = glm::dot(edge0, edge1);
+            d11 = glm::dot(edge1, edge1);
+            denominator = (d00 * d11) - (d01 * d01);
             normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
         }
 

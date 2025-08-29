@@ -127,8 +127,19 @@ namespace ir
 
     glm::vec2 Triangle::compute_uv_coordinates(const glm::vec3& point) const
     {
-        // TODO: UV coordinate computation to be implemented
-        return { 0.f, 0.f };
+        // Barycentric coordinates https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
+        // variant of Cramer's rule as used in intersect()
+
+        const auto difference = point - v0;
+
+        const auto d20 = glm::dot(difference, edge0);
+        const auto d21 = glm::dot(difference, edge1);
+
+        const auto v = ((d11 * d20) - (d01 * d21)) / denominator;
+        const auto w = ((d00 * d21) - (d01 * d20)) / denominator;
+        const auto u = 1.f - v - w;
+
+        return u * uv0 + v * uv1 + w * uv2;
     }
 
     RayIntersection Quadrilateral::intersect(const Ray& ray)
@@ -180,7 +191,7 @@ namespace ir
                 int face1 = std::stoi(tokens[2]);
                 int face2 = std::stoi(tokens[3]);
 
-                triangles.emplace_back(new Triangle{ vertices[face0 - 1], vertices[face1 - 1], vertices[face2 - 1], material });
+                triangles.emplace_back(new Triangle{ vertices[face0 - 1], vertices[face1 - 1], vertices[face2 - 1], glm::vec2{ 0.f, 0.f }, glm::vec2{ 0.f, 1.f }, glm::vec2{ 1.f, 1.f }, material });
             }
         }
 
