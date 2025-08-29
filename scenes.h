@@ -335,14 +335,14 @@ namespace ir
             },
             new Quadrilateral
             {
-                glm::vec3{ .5f, -.99f, .5f },
-                glm::vec3{ -.5f, -.99f, .5f },
-                glm::vec3{ .5f, -.99f, -.5f },
+                glm::vec3{ .25f, -.99f, .25f },
+                glm::vec3{ -.25f, -.99f, .25f },
+                glm::vec3{ .25f, -.99f, -.25f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
                     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                    .emission = glm::vec3{ 1e7f, 1e7f, 1e7f },
+                    .emission = glm::vec3{ 4e1f, 4e1f, 4e1f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,

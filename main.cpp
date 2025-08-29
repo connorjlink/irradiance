@@ -38,7 +38,7 @@ static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr int FRAME_HISTORY = 5;
 
-static constexpr bool ENABLE_SKYBOX = true;
+static constexpr bool ENABLE_SKYBOX = false;
 
 int _bounces = 2;
 int _samples = 5;
@@ -217,10 +217,15 @@ private:
                 albedo = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
             }
                 
-            const auto reflection = glm::reflect(ray.direction, nearest_intersection.normal);
+            auto normal = nearest_intersection.normal;
+            if (glm::dot(normal, ray.direction) > 0.f)
+            {
+                normal = -normal;
+            }
+            const auto reflection = glm::reflect(ray.direction, normal);
 
             auto random_in_unit_sphere = glm::sphericalRand(1.f);
-            if (glm::dot(random_in_unit_sphere, nearest_intersection.normal) < 0.f)
+            if (glm::dot(random_in_unit_sphere, normal) < 0.f)
             {
                 // needs to always face outward relative to the surface normal
                 // TODO: figure out why this makes rough surfaces too dark when lit directly by emissive materials
@@ -228,14 +233,14 @@ private:
             }
 
             // move to next bounce
-            ray.origin = nearest_intersection.position + nearest_intersection.normal * .001f; // offset to prevent self-intersection
+            ray.origin = nearest_intersection.position + normal * .001f; // offset to prevent self-intersection
 
             // TODO: incorporate importance sampling / probabilistic reflection
 
             // Fresnel term with Schlick's approximation
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
             // negative direction for non-incident ray
-            const auto angle = glm::clamp(glm::dot(-ray.direction, nearest_intersection.normal), 0.f, 1.f);
+            const auto angle = glm::clamp(glm::dot(-ray.direction, normal), 0.f, 1.f);
             const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - angle, 5.f); 
 
             ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
@@ -282,7 +287,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        scene_objects = test_spheres();
+        //scene_objects = test_spheres();
+        scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 
@@ -295,7 +301,7 @@ public:
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
                 .metallicity = .9f,
                 .anisotropy = 0.f,
-                .roughness = .1f,
+                .roughness = 0.f,
             }
         });
 
@@ -471,6 +477,7 @@ public:
                 // using linear to avoid biasing sampling toward the center of each pixel
                 auto ray_jittered = ray;
                 ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
+                ray_jittered.direction = glm::normalize(ray_jittered.direction);
 
                 if (enable_dof)
                 {
@@ -659,7 +666,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
