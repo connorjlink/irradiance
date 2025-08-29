@@ -282,6 +282,22 @@ private:
                 .roughness = 1.f,
             }
         },
+        new Triangle
+        {
+            glm::vec3{ -50.f, 2.f, 50.f },
+            glm::vec3{ 50.f, -50.f, 50.f },
+            glm::vec3{ 0.f, 2.f, 50.f },
+            PBRMaterial
+            {
+                .albedo = glm::vec3{ .5f, .5f, .5f },
+                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                .metallicity = 0.f,
+                .anisotropy = 0.f,
+                .roughness = 1.f,
+                .texture = gemstone.get(),
+            }
+        }
     };
 
 private:
@@ -803,7 +819,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 1, 1, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }

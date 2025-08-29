@@ -24,10 +24,6 @@ namespace ir
 {
     RayIntersection Sphere::intersect(const Ray& ray)
     {
-        static constexpr auto MAX_DISTANCE = std::numeric_limits<Real>::infinity();
-
-        auto distance = MAX_DISTANCE;
-
         const auto difference = ray.origin - center;
 
         const auto a = glm::dot(ray.direction, ray.direction);
@@ -77,8 +73,56 @@ namespace ir
 
     RayIntersection Triangle::intersect(const Ray& ray)
     {
-        // TODO: Triangle intersection logic to be implemented
-        return RayIntersection{};
+        // Modified Möller-Trumbore from https://en.m.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+
+        const auto test = glm::cross(ray.direction, edge1);
+        // run Cramer's rule to intersect
+        const auto determinant = glm::dot(edge0, test);
+
+        if (glm::abs(determinant) < .001f)
+        {
+            // parallel
+            return MISS;
+        }
+
+        const auto inverse_determinant = 1.f / determinant;
+        const auto difference = ray.origin - v0;
+        const auto u = glm::dot(difference, test) * inverse_determinant;
+
+        if (u < 0.f || u > 1.f)
+        {
+            // outside
+            return MISS;
+        }
+
+        const auto q = glm::cross(difference, edge0);
+        const auto v = glm::dot(ray.direction, q) * inverse_determinant;
+
+        if (v < 0.f || u + v > 1.f)
+        {
+            // outside
+            return MISS;
+        }
+
+        const auto t = glm::dot(edge1, q) * inverse_determinant;
+        
+        if (t <= .001f)
+        {
+            // behind
+            return MISS;
+        }
+
+        const auto intersection = ray.origin + ray.direction * t;
+
+        return 
+        {
+            .position = intersection,
+            .normal = normal,
+            .material = material,
+            .depth = t,
+            .hit = true,
+            .object = this,
+        };
     }
 
     glm::vec2 Triangle::compute_uv_coordinates(const glm::vec3& point) const
