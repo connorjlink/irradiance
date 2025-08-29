@@ -217,6 +217,7 @@ private:
                 albedo = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
             }
                 
+            // ensure normal is relative to the front face
             auto normal = nearest_intersection.normal;
             if (glm::dot(normal, ray.direction) > 0.f)
             {
@@ -224,11 +225,10 @@ private:
             }
             const auto reflection = glm::reflect(ray.direction, normal);
 
+            // ensure random sample hits hemisphere above the front face surface normal
             auto random_in_unit_sphere = glm::sphericalRand(1.f);
             if (glm::dot(random_in_unit_sphere, normal) < 0.f)
             {
-                // needs to always face outward relative to the surface normal
-                // TODO: figure out why this makes rough surfaces too dark when lit directly by emissive materials
                 random_in_unit_sphere = -random_in_unit_sphere;
             }
 
