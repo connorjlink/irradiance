@@ -75,12 +75,13 @@ namespace ir
     struct Quadrilateral : public Object
     {
     public:
-        glm::vec3 v0, v1, v2, v3;
+        glm::vec3 v0, v1, v2;
 
     public:
-        Quadrilateral(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, const PBRMaterial& material)
-            : v0{ v0 }, v1{ v1 }, v2{ v2 }, v3{ v3 }, Object{ material }
+        Quadrilateral(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const PBRMaterial& material)
+            : v0{ v0 }, v1{ v1 }, v2{ v2 }, Object{ material }
         {
+            
         }
     
     public:
