@@ -166,7 +166,7 @@ namespace ir
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
     // Utility function that does not meaningfully affect project functionality.
-    std::vector<Object*> load_obj(const std::string& filepath, const PBRMaterial& material, const glm::mat4& transform)
+    std::vector<Object*> load_obj(const std::string& filepath, const glm::mat4& transform, const PBRMaterial& default_material)
     {
         std::vector<Object*> objects{};
 
@@ -215,7 +215,7 @@ namespace ir
                         glm::vec2{ 0.f, 0.f }, 
                         glm::vec2{ 0.f, 1.f }, 
                         glm::vec2{ 1.f, 1.f }, 
-                        material,
+                        default_material,
                     });
                 }
                 else if (tokens.size() == 5)
@@ -232,7 +232,7 @@ namespace ir
                         vertices[face0 - 1],
                         vertices[face1 - 1],
                         vertices[face3 - 1],
-                        material,
+                        default_material,
                     });
                 }
                 

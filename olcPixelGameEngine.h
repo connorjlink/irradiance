@@ -5277,7 +5277,7 @@ namespace olc
 			glDisable(GL_CULL_FACE);
 		}
 
-		void SetDecalMode(const olc::DecalMode& mode)
+		void SetDecalMode(const olc::DecalMode& mode) override
 		{
 			if (mode != nDecalMode)
 			{

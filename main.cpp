@@ -21,6 +21,7 @@
 
 #include "utility.h"
 #include "renderer.h"
+#include "scenes.h"
 
 // main.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -100,248 +101,6 @@ public:
 	}
 
 private:
-    std::unique_ptr<olc::Sprite> skybox = std::make_unique<olc::Sprite>("golden_gate_hills_4k.hdr");
-    std::unique_ptr<olc::Sprite> water = std::make_unique<olc::Sprite>("pexels-enginakyurt-1435752.jpg");
-    std::unique_ptr<olc::Sprite> rock = std::make_unique<olc::Sprite>("pexels-life-of-pix-8892.jpg");
-    std::unique_ptr<olc::Sprite> gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
-    std::unique_ptr<olc::Sprite> wood = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129731.jpg");
-
-    std::vector<Object*> icosphere;
-    std::vector<Object*> cube;
-    std::vector<Object*> torus;
-    std::vector<Object*> cylinder;
-    std::vector<Object*> teapot;
-
-private:
-    std::vector<Object*> scene_objects = 
-    {
-        new Sphere
-        {
-            glm::vec3{ 120.f, -120.f, 100.f },
-            60.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .anisotropy = 0.f,
-                .roughness = 1.f,
-                .texture = rock.get(),
-            }
-        },
-
-        new Sphere
-        {
-            glm::vec3{ 120.f, -120.f, 0.f },
-            50.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .5f, .5f, .5f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 20.f, 20.f, 10.f },
-                .metallicity = 1.f,
-                .anisotropy = 0.f,
-                .roughness = 0.f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 0.f, -4.f, 5.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .5f, .5f, .5f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 1.f,
-                .anisotropy = 0.f,
-                .roughness = 0.f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 6.f, -1.f, 5.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .5f, .5f, .5f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 1.f,
-                .anisotropy = 0.f,
-                .roughness = .1f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 4.f, -1.f, 2.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 1.f,
-                .anisotropy = 0.f,
-                .roughness = .8f,
-                .texture = gemstone.get(),
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 2.f, -1.f, 0.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .anisotropy = 0.f,
-                .roughness = 1.f,
-                .texture = water.get(),
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ -2.f, -1.f, -1.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = .9f,
-                .anisotropy = 0.f,
-                .roughness = .9f,
-                .texture = wood.get(),
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ -4.f, -1.f, 2.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .56f, .518f, .835f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .anisotropy = 0.f,
-                .roughness = .5f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ -2.f, -.5f, 5.f },
-            .5f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 0.f, 1.f, 0.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 1.f,
-                .anisotropy = 0.f,
-                .roughness = 0.f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 0.f, -2.f, 5.f },
-            1.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 1.f, 0.f, 0.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = .25f,
-                .anisotropy = 0.f,
-                .roughness = .25f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 3.f, -1.5f, 5.f },
-            1.5f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ 0.f, 0.f, 1.f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = .8f,
-                .anisotropy = 0.f,
-                .roughness = .1f,
-            }
-        },
-        new Sphere
-        {
-            glm::vec3{ 0.f, 1000.f, 5.f },
-            1000.f,
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .25f, .5f, .75f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .anisotropy = 0.f,
-                .roughness = 1.f,
-            }
-        },
-        new Triangle
-        {
-            glm::vec3{ -50.f, 2.f, 5.f },
-            glm::vec3{ 50.f, -50.f, 50.f },
-            glm::vec3{ 0.f, 2.f, 50.f },
-            glm::vec2{ 0.f, 1.f },
-            glm::vec2{ 1.f, 0.f },
-            glm::vec2{ .5f, 1.f },
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .5f, .5f, .5f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = .5f,
-                .anisotropy = 0.f,
-                .roughness = .5f,
-                .texture = gemstone.get(),
-            }
-        },
-        new Quadrilateral
-        {
-            glm::vec3{ 50.f, 0.f, 0.f },
-            glm::vec3{ 50.f, -50.f, 0.f },
-            glm::vec3{ 50.f, 0.f, 50.f },
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .5f, .5f, .5f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .anisotropy = 0.f,
-                .roughness = 1.f,
-                .texture = wood.get(),
-            }
-        },
-        new Quadrilateral
-        {
-            glm::vec3{ 1.f, -10.f, -1.f },
-            glm::vec3{ -1.f, -10.f, -1.f },
-            glm::vec3{ 1.f, -10.f, 1.f },
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .5f, .5f, .5f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .anisotropy = 0.f,
-                .roughness = 1.f,
-                .texture = water.get(),
-            }
-        }
-    };
-
-private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
     bool last_dirty = false;
@@ -361,6 +120,8 @@ private:
     CircularBuffer<std::vector<glm::vec3>, FRAME_HISTORY> frame_history;
 
     std::vector<int> index_buffer;
+
+    std::vector<Object*> scene_objects = test_spheres();
 
 private:
     glm::vec3 compute_direction() const
@@ -516,61 +277,10 @@ public:
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
-        // icosphere = load_obj("icosphere.obj", PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ 1.f, .6f, 0.f },
-        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 0.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = 1.f,
-        // }, glm::identity<glm::mat4>());
-
-        // torus = load_obj("torus.obj", PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ 0.f, 1.f, 6.f },
-        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 0.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = 1.f,
-        // }, glm::identity<glm::mat4>());
-
-        // cube = load_obj("cube.obj", PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ 1.f, 0.f, 1.f },
-        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 0.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = 0.f,
-        // }, glm::identity<glm::mat4>());
-
-        cylinder = load_obj("cylinder.obj", PBRMaterial
-        {
-            .albedo = glm::vec3{ 0.f, 1.f, 1.f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .anisotropy = 0.f,
-            .roughness = 1.f,
-            .texture = wood.get(),
-        }, glm::translate(glm::identity<glm::mat4>(), glm::vec3{ 5.f, -5.f, 5.f }));
-
-        // teapot = load_obj("teapot.obj", PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 1.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = 0.f,
-        // }, glm::identity<glm::mat4>());
-
         //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
         //scene_objects.insert(scene_objects.end(), cube.begin(), cube.end());
-        scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
+        //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
         //scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
 
 		return true;
