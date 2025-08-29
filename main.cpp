@@ -109,6 +109,8 @@ private:
     std::vector<Object*> icosphere;
     std::vector<Object*> cube;
     std::vector<Object*> torus;
+    std::vector<Object*> cylinder;
+    std::vector<Object*> teapot;
 
 private:
     std::vector<Object*> scene_objects = 
@@ -524,15 +526,15 @@ public:
             .roughness = 1.f,
         });
 
-        // torus = load_obj("torus.obj", PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ 0.f, 1.f, 6.f },
-        //     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 0.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = 1.f,
-        // });
+        torus = load_obj("torus.obj", PBRMaterial
+        {
+            .albedo = glm::vec3{ 0.f, 1.f, 6.f },
+            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = 1.f,
+        });
 
         cube = load_obj("cube.obj", PBRMaterial
         {
@@ -544,9 +546,32 @@ public:
             .roughness = 0.f,
         });
 
+        cylinder = load_obj("cylinder.obj", PBRMaterial
+        {
+            .albedo = glm::vec3{ 0.f, 1.f, 1.f },
+            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = 1.f,
+        });
+
+        teapot = load_obj("teapot.obj", PBRMaterial
+        {
+            .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 1.f,
+            .anisotropy = 0.f,
+            .roughness = 0.f,
+        });
+
         //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
-        scene_objects.insert(scene_objects.end(), cube.begin(), cube.end());
+        //scene_objects.insert(scene_objects.end(), cube.begin(), cube.end());
+        //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
+        scene_objects = {};
+        scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
 
 		return true;
 	}
@@ -605,7 +630,7 @@ public:
             else
             {
                 // clicked on the skybox: "infinitely" far away
-                focal_distance = std::numeric_limits<Real>::infinity();
+                focal_distance = std::numeric_limits<Real>::max();
             }
 
             dirty = true;
@@ -892,7 +917,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
