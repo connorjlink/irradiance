@@ -220,7 +220,7 @@ namespace ir
                     // quadrilateral, 4 vertices to form the face
                     const auto face0 = std::stoi(tokens[1]);
                     const auto face1 = std::stoi(tokens[2]);
-                    const auto face2 = std::stoi(tokens[3]);
+                    [[maybe_unused]] const auto face2 = std::stoi(tokens[3]);
                     const auto face3 = std::stoi(tokens[4]);
 
                     // OBJ format note: consecutive vertices connected in polygon specification per https://en.wikipedia.org/wiki/Wavefront_.obj_file
