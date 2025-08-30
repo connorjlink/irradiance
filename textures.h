@@ -58,12 +58,14 @@ namespace ir
         {
             auto sum = 0.f;
 
-            for (auto x = 0; x < 2; x++)
+            for (auto x = 0; x < INTERPOLATION_DELTA; x++)
             {
-                for (int y = 0; y < 2; y++)
+                for (int y = 0; y < INTERPOLATION_DELTA; y++)
                 {
-                    for (int z = 0; z < 2; z++)
+                    for (int z = 0; z < INTERPOLATION_DELTA; z++)
                     {
+                        // Full attribution to Peter Shirley for trilinear interpolation formula!
+                        // https://raytracing.github.io/books/RayTracingTheNextWeek.html#perlinnoise/usingblocksofrandomnumbers
                         sum += sample[x][y][z] *
                             (x * u + (1.f - x) * (1.f - u)) *
                             (y * v + (1.f - y) * (1.f - v)) * 
@@ -78,14 +80,14 @@ namespace ir
     public:
         Real noise(const glm::vec<M, Real>& point) const
         {
-            const auto ijk = glm::vec<3, int>{ glm::floor(point) };
+            const auto ijk = glm::vec<M, int>{ glm::floor(point) };
         
             auto sample = InterpolationArray{};
-            for (int x = 0; x < 2; x++)
+            for (int x = 0; x < INTERPOLATION_DELTA; x++)
             {
-                for (int y = 0; y < 2; y++)
+                for (int y = 0; y < INTERPOLATION_DELTA; y++)
                 {
-                    for (int z = 0; z < 2; z++)
+                    for (int z = 0; z < INTERPOLATION_DELTA; z++)
                     {
                         // "hashing" coordinates per RTTNW https://raytracing.github.io/books/RayTracingTheNextWeek.html#perlinnoise/usingblocksofrandomnumbers
                         const auto index = 
