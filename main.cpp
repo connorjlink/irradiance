@@ -38,7 +38,7 @@ static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr int FRAME_HISTORY = 5;
 
-static constexpr bool ENABLE_SKYBOX = false;
+static constexpr bool ENABLE_SKYBOX = true;
 
 int _bounces = 2;
 int _samples = 5;
@@ -287,8 +287,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        //scene_objects = test_spheres();
-        scene_objects = cornell_box();
+        scene_objects = test_spheres();
+        //scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 
