@@ -127,6 +127,7 @@ namespace ir
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .5f,
+                    .texture = perlin.get(),
                 }
             },
             new Sphere
@@ -218,6 +219,22 @@ namespace ir
                     .anisotropy = 0.f,
                     .roughness = 1.f,
                     .texture = wood.get(),
+                }
+            },
+            new Quadrilateral
+            {
+                glm::vec3{ 50.f, 0.f, -50.f },
+                glm::vec3{ 50.f, -50.f, -50.f },
+                glm::vec3{ 50.f, 0.f, 0.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .5f, .5f, .5f },
+                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .anisotropy = 0.f,
+                    .roughness = 1.f,
+                    .texture = perlin.get(),
                 }
             },
             new Quadrilateral

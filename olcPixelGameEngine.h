@@ -435,6 +435,7 @@ int main()
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include "glm/glm.hpp"
 #pragma endregion
 
 #define PGE_VER 229
@@ -1093,6 +1094,7 @@ namespace olc
 		bool  SetPixel(const olc::vi2d& a, Pixel p);
 		Pixel Sample(float x, float y) const;
 		Pixel Sample(const olc::vf2d& uv) const;
+		virtual Pixel Sample(float u, float v, const glm::vec3& pos) const { return Sample(u, v); }
 		Pixel SampleBL(float u, float v) const;
 		Pixel SampleBL(const olc::vf2d& uv) const;
 		Pixel* GetData();
