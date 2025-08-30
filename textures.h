@@ -23,6 +23,10 @@ namespace ir
     class PerlinNoise : public olc::Sprite
     {
     private:
+        static constexpr std::size_t INTERPOLATION_DELTA = 2;
+        using InterpolationArray = std::array<std::array<std::array<Real, INTERPOLATION_DELTA>, INTERPOLATION_DELTA>, INTERPOLATION_DELTA>;
+
+    private:
         std::array<glm::vec<M, int>, N> permutation;
         std::array<Real, N> random;
 
@@ -50,15 +54,51 @@ namespace ir
             }
         }
 
-    public:
-        Real noise(glm::vec<M, Real> p) const
+        Real trilerp(InterpolationArray& sample, Real u, Real v, Real w) const
         {
-            const auto i = static_cast<int>(glm::floor(4.f * p.x)) & (N - 1);
-            const auto j = static_cast<int>(glm::floor(4.f * p.y)) & (N - 1);
-            const auto k = static_cast<int>(glm::floor(4.f * p.z)) & (N - 1);
-            // "hashing" coordinates per RTTNW https://raytracing.github.io/books/RayTracingTheNextWeek.html#perlinnoise/usingblocksofrandomnumbers
-            const auto index = permutation[i][0] ^ permutation[j][1] ^ permutation[k][2];
-            return random[index];
+            auto sum = 0.f;
+
+            for (auto x = 0; x < 2; x++)
+            {
+                for (int y = 0; y < 2; y++)
+                {
+                    for (int z = 0; z < 2; z++)
+                    {
+                        sum += sample[x][y][z] *
+                            (x * u + (1.f - x) * (1.f - u)) *
+                            (y * v + (1.f - y) * (1.f - v)) * 
+                            (z * w + (1.f - z) * (1.f - w)); 
+                    }
+                }
+            }
+
+            return sum;
+        }
+
+    public:
+        Real noise(const glm::vec<M, Real>& point) const
+        {
+            const auto ijk = glm::vec<3, int>{ glm::floor(point) };
+        
+            auto sample = InterpolationArray{};
+            for (int x = 0; x < 2; x++)
+            {
+                for (int y = 0; y < 2; y++)
+                {
+                    for (int z = 0; z < 2; z++)
+                    {
+                        // "hashing" coordinates per RTTNW https://raytracing.github.io/books/RayTracingTheNextWeek.html#perlinnoise/usingblocksofrandomnumbers
+                        const auto index = 
+                            permutation[(ijk.x + x) & (N - 1)][0] ^
+                            permutation[(ijk.y + y) & (N - 1)][1] ^
+                            permutation[(ijk.z + z) & (N - 1)][2];
+                        sample[x][y][z] = random[index];
+                    }
+                }
+            }
+
+            const auto uvw = point - glm::floor(point);
+            return trilerp(sample, uvw.x, uvw.y, uvw.z);
         }
 
     public:

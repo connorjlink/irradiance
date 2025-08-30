@@ -118,7 +118,7 @@ namespace ir
             new Sphere
             {
                 glm::vec3{ -4.f, -1.f, 2.f },
-                1.f,
+                2.f,
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .56f, .518f, .835f },
@@ -126,7 +126,7 @@ namespace ir
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
-                    .roughness = .5f,
+                    .roughness = 1.f,
                     .texture = perlin.get(),
                 }
             },
