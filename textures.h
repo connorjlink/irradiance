@@ -29,6 +29,7 @@ namespace ir
     private:
         std::array<glm::vec<M, int>, N> permutation;
         std::array<Real, N> random;
+        Real frequency = 1.f;
 
     private:
         std::random_device device{};
@@ -99,12 +100,15 @@ namespace ir
                 }
             }
 
-            const auto uvw = point - glm::floor(point);
+            auto uvw = point - glm::floor(point);
+            // Hermite cubic smoothing to reduce artifacting
+            uvw = uvw * uvw * (3.f - 2.f * uvw);
             return trilerp(sample, uvw.x, uvw.y, uvw.z);
         }
 
     public:
-        PerlinNoise()
+        PerlinNoise(Real frequency = 1.f)
+            : frequency{ frequency }
         {
             // pre-populate a known sequence of random values
             std::uniform_real_distribution<> distribution(0.f, 1.f);
@@ -119,7 +123,7 @@ namespace ir
     public:
         olc::Pixel Sample(float u, float v, const glm::vec3& pos) const override
         {
-            const auto value = noise(pos);
+            const auto value = noise(pos * frequency);
             const auto gray = static_cast<std::uint8_t>(value * 255.f);
             return olc::Pixel{ gray, gray, gray };
         }
@@ -130,7 +134,8 @@ namespace ir
     inline std::unique_ptr<olc::Sprite> rock;
     inline std::unique_ptr<olc::Sprite> gemstone;
     inline std::unique_ptr<olc::Sprite> wood;
-    inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin;
+    inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin_low;
+    inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin_high;
 
     inline void initialize_textures()
     {
@@ -139,7 +144,8 @@ namespace ir
         rock = std::make_unique<olc::Sprite>("pexels-life-of-pix-8892.jpg");
         gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
         wood = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129731.jpg");
-        perlin = std::make_unique<PerlinNoise<256uz, 3uz>>();
+        perlin_low = std::make_unique<PerlinNoise<256uz, 3uz>>(1.f);
+        perlin_high = std::make_unique<PerlinNoise<256uz, 3uz>>(10.f);
     }
 }
 

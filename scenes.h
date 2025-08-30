@@ -127,7 +127,7 @@ namespace ir
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
-                    .texture = perlin.get(),
+                    .texture = perlin_high.get(),
                 }
             },
             new Sphere
@@ -234,7 +234,7 @@ namespace ir
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
-                    .texture = perlin.get(),
+                    .texture = perlin_low.get(),
                 }
             },
             new Quadrilateral
