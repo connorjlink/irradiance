@@ -39,7 +39,7 @@ static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr int FRAME_HISTORY = 5;
 
-static constexpr bool ENABLE_SKYBOX = true;
+static constexpr bool ENABLE_SKYBOX = false;
 
 int _bounces = 2;
 int _samples = 5;
@@ -247,9 +247,8 @@ private:
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, mat.metallicity);
             const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
 
-            // TODO: should the material force these to already always add to 1??
             const auto metal_probability = mat.metallicity;
-            const auto reflection_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F));
+            const auto reflection_probability = (1.0f - mat.metallicity) * glm::compMax(F) + mat.metallicity;
             const auto refraction_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * mat.transmission;
             const auto diffuse_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * (1.f - mat.transmission);
 
@@ -282,7 +281,7 @@ private:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                return albedo * trace(ray, bounces - 1) / reflection_weight;
+                return mat.transmission * trace(ray, bounces - 1) / reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
             {
@@ -366,8 +365,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        scene_objects = test_spheres();
-        //scene_objects = cornell_box();
+        //scene_objects = test_spheres();
+        scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 
@@ -375,12 +374,14 @@ public:
             .4f, 
             PBRMaterial
             {
-                .albedo = glm::vec3{ .9f, .9f, .9f },
-                .absorption = glm::vec3{ 0.f, 0.f, 0.f },
+                .albedo = glm::vec3{ .2f, .4f, .9f },
+                .absorption = glm::vec3{ .2f, .4f, .9f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = .9f,
+                .metallicity = 0.f,
+                .refraction_index = -0.1f,
                 .anisotropy = 0.f,
                 .roughness = 0.f,
+                .transmission = .1f,
             }
         });
 
@@ -770,7 +771,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
