@@ -231,7 +231,6 @@ private:
             {
                 normal = -normal;
             }
-            const auto reflection = glm::reflect(ray.direction, normal);
 
             // ensure random sample hits hemisphere above the front face surface normal
             auto random_in_unit_sphere = glm::sphericalRand(1.f);
@@ -284,6 +283,10 @@ private:
             {
                 // diffuse scattering
                 ray.origin = nearest_intersection.position + normal * .001f;
+
+                // cosine-weighted hemisphere random sampling per lambertian BRDF
+                // heavily modified from the cosine distribution method plus re-basis
+                // https://www.rorydriscoll.com/2009/01/07/better-sampling/
 
                 const auto disk = glm::diskRand(1.f);
                 const auto z = glm::sqrt(glm::clamp(1.f - disk.x * disk.x - disk.y * disk.y, 0.f, 1.f));
