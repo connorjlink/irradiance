@@ -240,82 +240,72 @@ private:
                 random_in_unit_sphere = -random_in_unit_sphere;
             }
 
-            auto emissivity = [](auto* object)
-            {
-                return object->area * object->material.emission.length();
-            };
+            const auto& mat = nearest_intersection.material;
 
-            Object* sampled_light = nullptr;
-            for (const auto& light : emissive_objects)
-            {
-                // TODO: better sampling strategy than linear
-
-                if (glm::linearRand(0.f, 1.f) < light.probability)
-                {
-                    sampled_light = light.object;
-                    break;
-                }
-            }
-
-            auto direct = glm::vec3{ 0.f };
-
-            if (sampled_light)
-            {
-                const auto light_sample = sampled_light->sample();
-                const auto light_normal = sampled_light->normal_of(light_sample);
-                const auto light_direction = glm::normalize(light_sample - ray.origin);
-
-                const auto light_angle = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-                const auto normal_angle = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
-                
-                // next-event estimation visibility checking per bounce
-                // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
-                auto occlusion = 1.f;
-                for (const auto& object : scene_objects)
-                {
-                    if (object == sampled_light) 
-                    {
-                        continue;
-                    }
-
-                    const auto intersection = object->intersect(ray);
-                    if (intersection.hit && intersection.depth < glm::length(sampled_light->centroid - ray.origin))
-                    {
-                        occlusion = 0.f;
-                        break;
-                    }
-                }
-
-                const auto radiance = glm::length(sampled_light->material.emission);
-                const auto geometry = (light_angle * normal_angle) / glm::distance2(light_sample, ray.origin);
-                const auto probability = 1.f / sampled_light->area;
-
-                // TODO: implement full BRDF (using Cook-Torence/GGX???)
-                // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
-                const auto lambertian = albedo / glm::pi<Real>();
-
-                // // Fresnel term with Schlick's approximation
-                // const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
-                // // negative direction for non-incident ray
-                // const auto view_angle = glm::clamp(glm::dot(-ray.direction, reflection), 0.f, 1.f);
-                // const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
-                // IMPORTANT: was getting division by zero issues without the added epsilon!!!!
-                // return (F * D * G) / (4.f * normal_angle * view_angle + .001f);
-
-                direct = (lambertian * radiance * geometry * occlusion) / probability;
-            }
-
-            // offset to prevent self-intersection
-            ray.origin = nearest_intersection.position + normal * .001f; 
-            ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+            const auto normal_angle = glm::clamp(glm::dot(normal, -ray.direction), 0.f, 1.f);
             
-            const auto incoming = trace(ray, bounces - 1);
-            const auto lambertian = albedo / glm::pi<Real>();
+            // Fresnel term with Schlick's approximation
+            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, mat.metallicity);
+            const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
 
-            const auto angle = glm::clamp(glm::dot(normal, ray.direction), 0.f, 1.f);
-            const auto indirect = lambertian * incoming * angle;
+            // TODO: should the material force these to already always add to 1??
+            const auto metal_probability = mat.metallicity;
+            const auto reflection_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F));
+            const auto refraction_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * mat.transmission;
+            const auto diffuse_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * (1.f - mat.transmission);
 
-            return direct + indirect;
+            const auto total = metal_probability + reflection_probability + refraction_probability + diffuse_probability;
+
+            const auto metal_weight = metal_probability / total;
+            const auto reflection_weight = reflection_probability / total;
+            const auto refraction_weight = refraction_probability / total;
+            const auto diffuse_weight = diffuse_probability / total;
+
+            const auto random = glm::linearRand(0.f, 1.f);
+
+            if (random < metal_weight)
+            {
+                // metallic reflection
+                const auto reflection = glm::reflect(ray.direction, normal);
+                ray.origin = nearest_intersection.position + normal * .001f;
+                // TODO: sample according to roughness and anisotropy
+                ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+                return albedo * trace(ray, bounces - 1) / metal_weight;
+            }
+            else if (random < metal_weight + reflection_weight)
+            {
+                // dielectric reflection
+            }
+            else if (random < metal_weight + reflection_weight + refraction_weight)
+            {
+                // dielectric refraction
+            }
+            else
+            {
+                // diffuse scattering
+                ray.origin = nearest_intersection.position + normal * .001f;
+
+                const auto disk = glm::diskRand(1.f);
+                const auto z = glm::sqrt(glm::clamp(1.f - disk.x * disk.x - disk.y * disk.y, 0.f, 1.f));
+
+                const auto local_coodinates = glm::vec3{ disk.x, disk.y, z };
+            
+                auto tangent = glm::normalize(glm::cross(normal, glm::vec3{ 0.f, 0.f, 1.f }));
+                if (glm::length2(tangent) < .001f)
+                {
+                    tangent = glm::normalize(glm::cross(normal, glm::vec3{ 0.f, 1.f, 0.f }));
+                }
+
+                const auto bitangent = glm::normalize(glm::cross(tangent, normal));
+
+                const auto basis = glm::mat3{ tangent, bitangent, normal };
+                const auto world_coordinates = basis * local_coodinates;
+
+                ray.direction = glm::normalize(world_coordinates);
+
+                const auto lambertian = albedo / glm::pi<Real>();
+                return lambertian * trace(ray, bounces - 1) / diffuse_weight;
+            }
         }
         else
         {

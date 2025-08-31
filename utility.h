@@ -14,11 +14,6 @@
 // utility.h
 // (c) 2025 Connor J. Link. All Rights Reserved.
 
-namespace
-{
-    
-}
-
 namespace ir
 {
     // would double benefit accuracy meaningfully for the ray tracer?
