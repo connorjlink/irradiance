@@ -20,7 +20,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -35,7 +34,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 20.f, 20.f, 10.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
@@ -49,7 +47,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
@@ -63,7 +60,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
@@ -77,7 +73,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
@@ -92,7 +87,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -107,7 +101,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 0.f, 0.f, 0.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = .9f,
                     .anisotropy = 0.f,
@@ -122,7 +115,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .56f, .518f, .835f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -137,7 +129,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .refraction_index = -1.f,
@@ -153,7 +144,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .56f, .518f, .835f },
-                    .absorption = glm::vec3{ .56f, .518f, .835f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
@@ -167,12 +157,11 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, .05f, .025f },
-                    .absorption = glm::vec3{ .1f, .1f, .1f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = .1f,
-                    .refraction_index = .9f,
+                    .metallicity = 0.f,
+                    .refraction_index = -.1f,
                     .anisotropy = 0.f,
-                    .roughness = .1f,
+                    .roughness = .05f,
                     .transmission = .1f,
                 }
             },
@@ -183,11 +172,27 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .1f, 1.f, .1f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
+                }
+            },
+            new Colloid
+            {   
+                .1f,
+                new Sphere
+                {
+                    glm::vec3{ -2.f, -2.5f, 5.f },
+                    1.f,
+                    PBRMaterial
+                    {
+                        .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                        .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                        .metallicity = 0.f,
+                        .anisotropy = 0.f,
+                        .roughness = 0.f,
+                    }
                 }
             },
             new Sphere
@@ -197,7 +202,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .1f, 1.f, .1f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
@@ -211,7 +215,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, .1f, .1f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = .25f,
                     .anisotropy = 0.f,
@@ -225,9 +228,21 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .1f, .1f, 1.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = .8f,
+                    .anisotropy = 0.f,
+                    .roughness = .1f,
+                }
+            },
+            new Sphere
+            {
+                glm::vec3{ 3.f, -4.5f, 5.f },
+                1.5f,
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .9f, .5f, .1f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = .9f,
                     .anisotropy = 0.f,
                     .roughness = .1f,
                 }
@@ -239,7 +254,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .25f, .5f, .75f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -257,7 +271,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = .5f,
                     .anisotropy = 0.f,
@@ -273,7 +286,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -289,7 +301,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -305,7 +316,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .refraction_index = 1.f,
@@ -330,7 +340,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .75f, .25f, .25f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -345,7 +354,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -360,7 +368,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .25f, .75f, .25f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -375,7 +382,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .25f, .25f, .75f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -390,7 +396,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -405,7 +410,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
@@ -420,7 +424,6 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 3e1f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,

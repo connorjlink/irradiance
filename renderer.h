@@ -116,6 +116,24 @@ namespace ir
         glm::vec3 normal_of(const glm::vec3& position) override;
     }; 
 
+    struct Colloid : public Object
+    {
+    public:
+        Real density;
+        Object* container;
+        
+    public:
+        Colloid(Real density, Object* container)
+            : density{ density }, container{ container }, Object{ container->material }
+        {
+        }
+
+    public:
+        RayIntersection intersect(const Ray& ray) override;
+        glm::vec3 sample() override;
+        glm::vec3 normal_of(const glm::vec3& position) override;
+    };
+
     std::vector<Object*> load_obj(const std::string& filepath, const glm::mat4& transform, const PBRMaterial& default_material);
 }
 

@@ -57,6 +57,7 @@ namespace ir
                     .normal = normal,
                     .material = material,
                     .depth = t1,
+                    .exit = t2,
                     .hit = true,
                     .object = this,
                     .uv = { u, v },
@@ -205,6 +206,60 @@ namespace ir
     glm::vec3 Quadrilateral::normal_of(const glm::vec3& position)
     {
         return normal;
+    }
+
+    RayIntersection Colloid::intersect(const Ray& ray)
+    {
+        const auto intersection = container->intersect(ray);
+        if (!intersection.hit)
+        {
+            return MISS;
+        }
+
+        const auto scatter_distance = (intersection.exit - intersection.depth) * glm::length(ray.direction);
+        if (scatter_distance <= 0.f)
+        {
+            return MISS;
+        }
+        
+        // exponential falloff per https://raytracing.github.io/books/RayTracingTheNextWeek.html#volumes/constantdensitymediums
+        const auto random = glm::linearRand(0.f, 1.f);
+        const auto travel = -(1.f / density) * glm::log(random);
+
+        if (travel > scatter_distance)
+        {
+            // scatter randomly within the bounding media
+            const auto position = ray.origin + glm::normalize(intersection.position - ray.origin) * travel;
+            const auto normal = glm::sphericalRand(1.f);
+
+            const auto attenuation = glm::exp(-density * travel * material.albedo);
+            const auto final_color = attenuation * intersection.material.albedo;
+
+            material.albedo = final_color;
+
+            return 
+            {
+                .position = position,
+                .normal = normal,
+                .material = material,
+                .depth = glm::length(position - ray.origin),
+                .hit = true,
+                .object = this,
+                .uv = { 0.f, 0.f },
+            };
+        }
+
+        return intersection;
+    }
+
+    glm::vec3 Colloid::sample()
+    {
+        return container->sample();
+    }
+
+    glm::vec3 Colloid::normal_of(const glm::vec3& position)
+    {
+        return glm::sphericalRand(1.f);
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.

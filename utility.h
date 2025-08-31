@@ -28,10 +28,8 @@ namespace ir
     struct PBRMaterial
     {
         /* base color RGB */
-        glm::vec3 albedo;
-
         /* falloff-absorb toward color RGB in dielectrics */
-        glm::vec3 absorption;
+        glm::vec3 albedo;
 
         /* light production RGB, 0 = absorber only */
         glm::vec3 emission;
@@ -51,6 +49,7 @@ namespace ir
         /* 0 = light cannot penetrate dielectric, 1 = dielectric does not impede light */
         Real transmission; 
 
+        /* albedo sampled from this texture if specified */
         olc::Sprite* texture = nullptr;
     };
 
@@ -62,6 +61,7 @@ namespace ir
         glm::vec3 normal;
         PBRMaterial material;
         Real depth = std::numeric_limits<float>::infinity();
+        Real exit = std::numeric_limits<float>::infinity();
         bool hit;
         Object* object = nullptr;
         glm::vec2 uv;

@@ -39,7 +39,12 @@ static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr int FRAME_HISTORY = 5;
 
-static constexpr bool ENABLE_SKYBOX = false;
+#ifndef CORNELL
+    static constexpr bool ENABLE_SKYBOX = true;
+#else
+    static constexpr bool ENABLE_SKYBOX = false;
+#endif
+
 
 int _bounces = 2;
 int _samples = 5;
@@ -241,11 +246,11 @@ private:
 
             const auto& mat = nearest_intersection.material;
 
-            const auto normal_angle = glm::clamp(glm::dot(normal, -ray.direction), 0.f, 1.f);
+            const auto normal_angle = glm::clamp(glm::dot(normal, ray.direction), 0.f, 1.f);
             
             // Fresnel term with Schlick's approximation
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, mat.metallicity);
-            const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
+            const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(normal_angle, 5.f); 
 
             const auto metal_probability = mat.metallicity;
             const auto reflection_probability = (1.0f - mat.metallicity) * glm::compMax(F) + mat.metallicity;
@@ -297,7 +302,8 @@ private:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(refraction + random_in_unit_sphere * nearest_intersection.material.roughness);
 
-                const auto attenuation = glm::exp(-mat.absorption * nearest_intersection.depth);
+                // Beer-Lambert attenuation (re-using albedo as absorption)
+                const auto attenuation = glm::exp(-mat.albedo * nearest_intersection.depth);
 
                 return attenuation * trace(ray, bounces - 1) / refraction_weight;
             }
@@ -365,8 +371,12 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        //scene_objects = test_spheres();
+
+    #ifndef CORNELL
+        scene_objects = test_spheres();
+    #else
         scene_objects = cornell_box();
+    #endif
 
         scene_objects.emplace_back(new Sphere
         { 
@@ -375,10 +385,9 @@ public:
             PBRMaterial
             {
                 .albedo = glm::vec3{ .2f, .4f, .9f },
-                .absorption = glm::vec3{ .2f, .4f, .9f },
                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
                 .metallicity = 0.f,
-                .refraction_index = -0.1f,
+                .refraction_index = -.1f,
                 .anisotropy = 0.f,
                 .roughness = 0.f,
                 .transmission = .1f,
@@ -388,7 +397,6 @@ public:
         const auto mesh = cube(glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }), PBRMaterial
         {
             .albedo = glm::vec3{ .9f, .9f, .9f },
-            .absorption = glm::vec3{ 0.f, 0.f, 0.f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
             .metallicity = 0.f,
             .anisotropy = 0.f,
