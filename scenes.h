@@ -343,9 +343,9 @@ namespace ir
         {
             new Quadrilateral
             {
+                glm::vec3{ 1.f, -1.f, 1.f },
                 glm::vec3{ 1.f, 1.f, 1.f },
                 glm::vec3{ -1.f, 1.f, 1.f },
-                glm::vec3{ 1.f, -1.f, 1.f },
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .75f, .25f, .25f },
