@@ -18,6 +18,7 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/random.hpp"
+#include "glm/gtx/norm.hpp"
 
 #include "utility.h"
 #include "renderer.h"
@@ -124,7 +125,16 @@ private:
 
     std::vector<int> index_buffer;
 
+public:
+    struct Emitter
+    {
+        Object* object = nullptr;
+        Real power = 0.f;
+        Real probability = 0.f;
+    };
+
     std::vector<Object*> scene_objects;
+    std::vector<Emitter> emissive_objects;
 
 private:
     glm::vec3 compute_direction() const
@@ -200,8 +210,6 @@ private:
             // for testing only
             //std::cout << "Hit at depth: " << intersection.depth << "\n";
 
-            // TODO: implement full PBR shading model
-
             if (nearest_intersection.material.emission != glm::vec3{ 0.f })
             {
                 // emissive surfaces terminate bouncing
@@ -237,23 +245,79 @@ private:
 
             // TODO: incorporate importance sampling / probabilistic reflection
 
-            // Fresnel term with Schlick's approximation
-            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
-            // negative direction for non-incident ray
-            const auto angle = glm::clamp(glm::dot(-ray.direction, normal), 0.f, 1.f);
-            const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - angle, 5.f); 
+            auto emissivity = [](auto* object)
+            {
+                return object->area * object->material.emission.length();
+            };
+
+            Object* sampled_light = nullptr;
+            for (const auto& light : emissive_objects)
+            {
+                // TODO: better sampling strategy than linear
+
+                if (glm::linearRand(0.f, 1.f) < light.probability)
+                {
+                    sampled_light = light.object;
+                    break;
+                }
+            }
+
+            const auto light_direction = sampled_light 
+                ? glm::normalize(sampled_light->centroid - ray.origin)
+                : glm::vec3{ 0.f };
+
+            const auto light_angle = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
+            const auto normal_angle = glm::clamp(glm::dot(-ray.direction, normal), 0.f, 1.f);
+
+            // TODO: maybe need to do shadow occlusion testing??
+
+            const auto radiance = sampled_light ? glm::length(sampled_light->material.emission) : 0.f;
+
+            auto brdf = [&]()
+            {
+                // Fresnel term with Schlick's approximation
+                const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
+                // negative direction for non-incident ray
+                const auto view_angle = glm::clamp(glm::dot(-ray.direction, reflection), 0.f, 1.f);
+                const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
+                // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
+
+                const auto D = 1.f;
+
+                const auto G = 1.f;
+
+                // IMPORTANT: was getting division by zero issues without the added epsilon!!!!
+                return (F * D * G) / (4.f * normal_angle * view_angle + .001f);
+            };
+
+            const auto base = brdf();
+            const auto geometry = (light_angle * normal_angle) / glm::distance2(sampled_light->centroid, ray.origin);
+            const auto probability = sampled_light ? 1.f / sampled_light->area : 1.f;
+
+            // next-event estimation visibility checking per bounce
+            // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
+            auto occlusion = 1.f;
+            for (const auto& object : scene_objects)
+            {
+                if (object == sampled_light) 
+                {
+                    continue;
+                }
+
+                const auto intersection = object->intersect(ray);
+                if (intersection.hit && intersection.depth < glm::length(sampled_light->centroid - ray.origin))
+                {
+                    occlusion = 0.f;
+                    break;
+                }
+            }
+
+            const auto direct = (base * radiance * geometry * occlusion) / probability;
 
             ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
             const auto indirect = trace(ray, bounces - 1);
 
-            const auto specular = F * indirect;
-            
-            // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
-            const auto brdf = (1.f - nearest_intersection.material.metallicity) * albedo / glm::pi<Real>();
-            // TODO: replace with a proper BRDF
-            const auto diffuse = brdf * indirect;
-
-            return diffuse + specular;
+            return direct + indirect;
         }
         else
         {
@@ -287,8 +351,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        scene_objects = test_spheres();
-        //scene_objects = cornell_box();
+        //scene_objects = test_spheres();
+        scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 
@@ -320,6 +384,31 @@ public:
         //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
         //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
         //scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
+
+        for (auto& object : scene_objects)
+        {
+            if (object && object->material.emission != glm::vec3{ 0.f })
+            {
+                emissive_objects.emplace_back(Emitter
+                { 
+                    .object = object, 
+                    .power = glm::length(object->material.emission), 
+                    .probability = 0.f,
+                });
+            }
+        }
+
+        auto emissivity = [](auto emitter)
+        {
+            return emitter.object->area * glm::length(emitter.object->material.emission);
+        };
+
+        for (auto& emitter : emissive_objects)
+        {
+            // pre-compute the probability of sampling each emitter weighted by emissivity as part of importance sampling
+            emitter.probability = emissivity(emitter) / std::accumulate(emissive_objects.begin(), emissive_objects.end(), 0.f, 
+                [&](auto sum, auto emitter) { return sum + emissivity(emitter); });
+        }
 
 		return true;
 	}

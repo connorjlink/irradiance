@@ -13,6 +13,8 @@ namespace ir
     {
     public:
         PBRMaterial material;
+        Real area = 0.f;
+        glm::vec3 centroid = glm::vec3{ 0.f };
 
     public:
         Object(const PBRMaterial& material) 
@@ -35,6 +37,8 @@ namespace ir
         Sphere(glm::vec3 center, Real radius, const PBRMaterial& material)
             : center{ center }, radius{ radius }, Object{ material }
         {
+            area = 4.f * glm::pi<Real>() * radius * radius;
+            centroid = center;
         }
 
     public:
@@ -63,6 +67,9 @@ namespace ir
             d11 = glm::dot(edge1, edge1);
             denominator = (d00 * d11) - (d01 * d01);
             normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+            // area is half the equivalent parallelogram
+            area = .5f * glm::length(glm::cross(edge0, edge1));
+            centroid = (v0 + v1 + v2) / 3.f;
         }
 
     public:
@@ -91,6 +98,10 @@ namespace ir
             normal = glm::normalize(orthogonal);
             constant = glm::dot(normal, v0);
             reciprocal = orthogonal / glm::dot(orthogonal, orthogonal);
+            // area is equal to cross product parallogram
+            area = glm::length(orthogonal);
+            // parallelogram centroid: r0 + (u + v) / 2
+            centroid = v0 + (this->v1 + this->v2) / 2.f;
         }
     
     public:
