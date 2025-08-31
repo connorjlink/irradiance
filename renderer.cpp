@@ -3,6 +3,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/compatibility.hpp"
+#include "glm/gtc/random.hpp"
 
 #include "renderer.h"
 
@@ -66,6 +67,16 @@ namespace ir
         return MISS;
     }
 
+    glm::vec3 Sphere::sample()
+    {
+        return center + glm::sphericalRand(radius);
+    }
+
+    glm::vec3 Sphere::normal_of(const glm::vec3& position)
+    {
+        return glm::normalize(position - center);
+    }
+
     RayIntersection Triangle::intersect(const Ray& ray)
     {
         // Modified Möller-Trumbore from https://en.m.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
@@ -120,6 +131,24 @@ namespace ir
         };
     }
 
+    glm::vec3 Triangle::sample()
+    {
+        // compute as uniform barycentric coordinates, modified from 
+        // https://stackoverflow.com/questions/4778147/sample-random-point-in-triangle
+        const auto sqrt_r1 = glm::sqrt(glm::linearRand(0.f, 1.f));
+        const auto r2 = glm::linearRand(0.f, 1.f);
+
+        const auto u = 1.f - sqrt_r1;
+        const auto v = r2 * sqrt_r1;
+
+        return (1.f - u - v) * v0 + u * v1 + v * v2;
+    }
+
+    glm::vec3 Triangle::normal_of(const glm::vec3& position)
+    {
+        return normal;
+    }
+
     RayIntersection Quadrilateral::intersect(const Ray& ray)
     {
         // quad intersection from https://raytracing.github.io/books/RayTracingTheNextWeek.html
@@ -162,6 +191,20 @@ namespace ir
             .object = this,
             .uv = { u, v },
         };
+    }
+
+    glm::vec3 Quadrilateral::sample()
+    {
+        // simple offsets into the parallelogram
+        const auto u = glm::linearRand(0.f, 1.f);
+        const auto v = glm::linearRand(0.f, 1.f);
+
+        return v0 + u * v1 + v * v2;
+    }
+
+    glm::vec3 Quadrilateral::normal_of(const glm::vec3& position)
+    {
+        return normal;
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.

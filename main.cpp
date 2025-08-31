@@ -240,11 +240,6 @@ private:
                 random_in_unit_sphere = -random_in_unit_sphere;
             }
 
-            // move to next bounce
-            ray.origin = nearest_intersection.position + normal * .001f; // offset to prevent self-intersection
-
-            // TODO: incorporate importance sampling / probabilistic reflection
-
             auto emissivity = [](auto* object)
             {
                 return object->area * object->material.emission.length();
@@ -262,60 +257,63 @@ private:
                 }
             }
 
-            const auto light_direction = sampled_light 
-                ? glm::normalize(sampled_light->centroid - ray.origin)
-                : glm::vec3{ 0.f };
+            auto direct = glm::vec3{ 0.f };
 
-            const auto light_angle = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-            const auto normal_angle = glm::clamp(glm::dot(-ray.direction, normal), 0.f, 1.f);
-
-            // TODO: maybe need to do shadow occlusion testing??
-
-            const auto radiance = sampled_light ? glm::length(sampled_light->material.emission) : 0.f;
-
-            auto brdf = [&]()
+            if (sampled_light)
             {
-                // Fresnel term with Schlick's approximation
-                const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
-                // negative direction for non-incident ray
-                const auto view_angle = glm::clamp(glm::dot(-ray.direction, reflection), 0.f, 1.f);
-                const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
+                const auto light_sample = sampled_light->sample();
+                const auto light_normal = sampled_light->normal_of(light_sample);
+                const auto light_direction = glm::normalize(light_sample - ray.origin);
+
+                const auto light_angle = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
+                const auto normal_angle = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
+                
+                // next-event estimation visibility checking per bounce
+                // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
+                auto occlusion = 1.f;
+                for (const auto& object : scene_objects)
+                {
+                    if (object == sampled_light) 
+                    {
+                        continue;
+                    }
+
+                    const auto intersection = object->intersect(ray);
+                    if (intersection.hit && intersection.depth < glm::length(sampled_light->centroid - ray.origin))
+                    {
+                        occlusion = 0.f;
+                        break;
+                    }
+                }
+
+                const auto radiance = glm::length(sampled_light->material.emission);
+                const auto geometry = (light_angle * normal_angle) / glm::distance2(light_sample, ray.origin);
+                const auto probability = 1.f / sampled_light->area;
+
+                // TODO: implement full BRDF (using Cook-Torence/GGX???)
                 // Lambertian diffuse https://en.wikipedia.org/wiki/Lambertian_reflectance
+                const auto lambertian = albedo / glm::pi<Real>();
 
-                const auto D = 1.f;
-
-                const auto G = 1.f;
-
+                // // Fresnel term with Schlick's approximation
+                // const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, nearest_intersection.material.metallicity);
+                // // negative direction for non-incident ray
+                // const auto view_angle = glm::clamp(glm::dot(-ray.direction, reflection), 0.f, 1.f);
+                // const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(1.f - normal_angle, 5.f); 
                 // IMPORTANT: was getting division by zero issues without the added epsilon!!!!
-                return (F * D * G) / (4.f * normal_angle * view_angle + .001f);
-            };
+                // return (F * D * G) / (4.f * normal_angle * view_angle + .001f);
 
-            const auto base = brdf();
-            const auto geometry = (light_angle * normal_angle) / glm::distance2(sampled_light->centroid, ray.origin);
-            const auto probability = sampled_light ? 1.f / sampled_light->area : 1.f;
-
-            // next-event estimation visibility checking per bounce
-            // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
-            auto occlusion = 1.f;
-            for (const auto& object : scene_objects)
-            {
-                if (object == sampled_light) 
-                {
-                    continue;
-                }
-
-                const auto intersection = object->intersect(ray);
-                if (intersection.hit && intersection.depth < glm::length(sampled_light->centroid - ray.origin))
-                {
-                    occlusion = 0.f;
-                    break;
-                }
+                direct = (lambertian * radiance * geometry * occlusion) / probability;
             }
 
-            const auto direct = (base * radiance * geometry * occlusion) / probability;
-
+            // offset to prevent self-intersection
+            ray.origin = nearest_intersection.position + normal * .001f; 
             ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
-            const auto indirect = trace(ray, bounces - 1);
+            
+            const auto incoming = trace(ray, bounces - 1);
+            const auto lambertian = albedo / glm::pi<Real>();
+
+            const auto angle = glm::clamp(glm::dot(normal, ray.direction), 0.f, 1.f);
+            const auto indirect = lambertian * incoming * angle;
 
             return direct + indirect;
         }
@@ -351,8 +349,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        //scene_objects = test_spheres();
-        scene_objects = cornell_box();
+        scene_objects = test_spheres();
+        //scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 

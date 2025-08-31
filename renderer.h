@@ -25,6 +25,8 @@ namespace ir
 
     public:
         virtual RayIntersection intersect(const Ray& ray) = 0;
+        virtual glm::vec3 sample() = 0;
+        virtual glm::vec3 normal_of(const glm::vec3& position) = 0;
     };
 
     struct Sphere : public Object
@@ -43,6 +45,8 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
+        glm::vec3 sample() override;
+        glm::vec3 normal_of(const glm::vec3& position) override;
     };
 
     struct Triangle : public Object
@@ -74,6 +78,8 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
+        glm::vec3 sample() override;
+        glm::vec3 normal_of(const glm::vec3& position) override;
     };
 
     struct Quadrilateral : public Object
@@ -106,6 +112,8 @@ namespace ir
     
     public:
         RayIntersection intersect(const Ray& ray) override;
+        glm::vec3 sample() override;
+        glm::vec3 normal_of(const glm::vec3& position) override;
     }; 
 
     std::vector<Object*> load_obj(const std::string& filepath, const glm::mat4& transform, const PBRMaterial& default_material);
