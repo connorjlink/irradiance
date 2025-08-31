@@ -583,7 +583,7 @@ public:
 
             const auto& ray = rays[i];
 
-            glm::vec3 total_color = glm::vec3{ 0.f, 0.f, 0.f };
+            auto total_color = glm::vec3{ 0.f, 0.f, 0.f };
 
             for (int s = 0; s < _samples; s++)
             {
