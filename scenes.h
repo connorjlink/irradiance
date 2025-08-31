@@ -180,7 +180,7 @@ namespace ir
             },
             new Colloid
             {   
-                .1f,
+                1.f,
                 new Sphere
                 {
                     glm::vec3{ -2.f, -2.5f, 5.f },

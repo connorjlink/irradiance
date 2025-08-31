@@ -216,7 +216,9 @@ namespace ir
             return MISS;
         }
 
-        const auto scatter_distance = (intersection.exit - intersection.depth) * glm::length(ray.direction);
+        const auto entry = ray.origin + ray.direction * intersection.depth;
+        const auto exit = ray.origin + ray.direction * intersection.exit;
+        const auto scatter_distance = glm::length(exit - entry);
         if (scatter_distance <= 0.f)
         {
             return MISS;
@@ -226,16 +228,14 @@ namespace ir
         const auto random = glm::linearRand(0.f, 1.f);
         const auto travel = -(1.f / density) * glm::log(random);
 
-        if (travel > scatter_distance)
+        if (travel < scatter_distance)
         {
             // scatter randomly within the bounding media
-            const auto position = ray.origin + glm::normalize(intersection.position - ray.origin) * travel;
+            const auto position = entry + ray.direction * travel;
             const auto normal = glm::sphericalRand(1.f);
 
             const auto attenuation = glm::exp(-density * travel * material.albedo);
-            const auto final_color = attenuation * intersection.material.albedo;
-
-            material.albedo = final_color;
+            material.albedo *= attenuation;
 
             return 
             {
@@ -249,7 +249,7 @@ namespace ir
             };
         }
 
-        return intersection;
+        return MISS;
     }
 
     glm::vec3 Colloid::sample()
