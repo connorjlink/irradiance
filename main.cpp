@@ -162,10 +162,12 @@ private:
                     .direction = glm::normalize(glm::vec3{ instance.inverse * glm::vec4{ ray.direction, 0.f } }),
                 };
 
-                const auto intersection = object->intersect(ray_transformed);
-
+                auto intersection = object->intersect(ray_transformed);
                 if (intersection.hit && intersection.depth < nearest_intersection.depth)
                 {
+                    intersection.position = glm::vec3{ instance.transform * glm::vec4{ intersection.position, 1.f } };
+                    // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
+                    intersection.normal = glm::normalize(glm::vec3{ instance.transform * glm::vec4{ intersection.normal, 0.f } });
                     nearest_intersection = intersection;
                 }
             }
@@ -326,7 +328,8 @@ private:
                 ray.direction = glm::normalize(refraction + random_in_unit_sphere * nearest_intersection.material.roughness);
 
                 // Beer-Lambert attenuation (re-using albedo as absorption)
-                const auto attenuation = glm::exp(-mat.albedo * nearest_intersection.depth);
+                const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
+                const auto attenuation = glm::exp(-mat.albedo * attenuation_distance);
 
                 return attenuation * trace(ray, bounces - 1) / refraction_weight;
             }
@@ -398,14 +401,14 @@ public:
     #ifndef CORNELL
         scene_instances.emplace_back(test_spheres());
     #else
-        scene_objects.emplace_back(cornell_box());
+        scene_instances.emplace_back(cornell_box());
     #endif
 
         static const auto sphere = Mesh
         {
             new Sphere
             { 
-                glm::vec3{ .5f, .6f, .5f }, 
+                glm::vec3{ .5f, .6f, -.5f }, 
                 .4f, 
                 PBRMaterial
                 {
@@ -432,7 +435,7 @@ public:
         });
         static const auto mesh_instance = MeshInstance
         {
-            glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }),
+            glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f, 2.f, .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -10.5f }),
             mesh
         };
         scene_instances.emplace_back(mesh_instance);

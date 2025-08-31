@@ -134,7 +134,7 @@ namespace ir
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
-                    .refraction_index = -1.f,
+                    .refraction_index = -.99f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
                     .transmission = 1.f,
