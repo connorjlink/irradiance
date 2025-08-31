@@ -139,9 +139,10 @@ namespace ir
                     .albedo = glm::vec3{ .56f, .518f, .835f },
                     .absorption = glm::vec3{ .56f, .518f, .835f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 1.f,
+                    .metallicity = 0.f,
                     .anisotropy = 0.f,
-                    .roughness = 1.f,
+                    .roughness = .1f,
+                    .transmission = 1.f,
                 }
             },
             new Sphere
@@ -394,9 +395,9 @@ namespace ir
             },
             new Quadrilateral
             {
-                glm::vec3{ .5f, -.99f, .5f },
-                glm::vec3{ -.5f, -.99f, .5f },
-                glm::vec3{ .5f, -.99f, -.5f },
+                glm::vec3{ .25f, -.99f, .25f },
+                glm::vec3{ -.25f, -.99f, .25f },
+                glm::vec3{ .25f, -.99f, -.25f },
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },

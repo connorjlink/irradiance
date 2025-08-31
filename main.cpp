@@ -266,14 +266,23 @@ private:
             {
                 // metallic reflection
                 const auto reflection = glm::reflect(ray.direction, normal);
+                
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+                
                 return albedo * trace(ray, bounces - 1) / metal_weight;
             }
             else if (random < metal_weight + reflection_weight)
             {
                 // dielectric reflection
+                const auto reflection = glm::reflect(ray.direction, normal);
+                
+                ray.origin = nearest_intersection.position + normal * .001f;
+                // TODO: sample according to roughness and anisotropy
+                ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
+                
+                return trace(ray, bounces - 1) / reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
             {
@@ -282,7 +291,6 @@ private:
             else
             {
                 // diffuse scattering
-                ray.origin = nearest_intersection.position + normal * .001f;
 
                 // cosine-weighted hemisphere random sampling per lambertian BRDF
                 // heavily modified from the cosine distribution method plus re-basis
@@ -304,9 +312,11 @@ private:
                 const auto basis = glm::mat3{ tangent, bitangent, normal };
                 const auto world_coordinates = basis * local_coodinates;
 
+                ray.origin = nearest_intersection.position + normal * .001f;
                 ray.direction = glm::normalize(world_coordinates);
 
                 const auto lambertian = albedo / glm::pi<Real>();
+                
                 return lambertian * trace(ray, bounces - 1) / diffuse_weight;
             }
         }
@@ -342,8 +352,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        scene_objects = test_spheres();
-        //scene_objects = cornell_box();
+        //scene_objects = test_spheres();
+        scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 
@@ -746,7 +756,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
