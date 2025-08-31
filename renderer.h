@@ -36,7 +36,7 @@ namespace ir
         Real radius;
 
     public:
-        Sphere(glm::vec3 center, Real radius, const PBRMaterial& material)
+        Sphere(const glm::vec3& center, Real radius, const PBRMaterial& material)
             : center{ center }, radius{ radius }, Object{ material }
         {
             area = 4.f * glm::pi<Real>() * radius * radius;
@@ -60,7 +60,7 @@ namespace ir
         glm::vec3 normal;
 
     public:
-        Triangle(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, const PBRMaterial& material)
+        Triangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec2& uv0, const glm::vec2& uv1, const glm::vec2& uv2, const PBRMaterial& material)
             : v0{ v0 }, v1{ v1 }, v2{ v2 }, uv0{ uv0 }, uv1{ uv1 }, uv2{ uv2 }, Object{ material }
         {
             // cache to avoid recomputing per intersection
@@ -94,7 +94,7 @@ namespace ir
 
 
     public:
-        Quadrilateral(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, const PBRMaterial& material)
+        Quadrilateral(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const PBRMaterial& material)
             : v0{ v0 }, Object{ material }
         {
             this->v1 = v0 - v1;
@@ -134,7 +134,24 @@ namespace ir
         glm::vec3 normal_of(const glm::vec3& position) override;
     };
 
-    std::vector<Object*> load_obj(const std::string& filepath, const glm::mat4& transform, const PBRMaterial& default_material);
+    using Mesh = std::vector<Object*>;
+
+    struct MeshInstance
+    {
+    public:
+        glm::mat4 transform;
+        glm::mat4 inverse;
+        const Mesh& mesh;
+
+    public:
+        MeshInstance(const glm::mat4& transform, const Mesh& mesh)
+            : transform{ transform }, mesh{ mesh }
+        {
+            inverse = glm::inverse(transform);
+        }
+    };
+
+    MeshInstance load_obj(const std::string& filepath, const PBRMaterial& default_material);
 }
 
 #endif

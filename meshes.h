@@ -12,12 +12,12 @@
 
 namespace ir
 {
-    std::vector<Object*> icosphere(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
-    std::vector<Object*> torus(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
-    std::vector<Object*> cube(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
-    std::vector<Object*> cylinder(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
-    std::vector<Object*> teapot(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
-    std::vector<Object*> monkey(const glm::mat4& transform = glm::identity<glm::mat4>(), const PBRMaterial& material = PBRMaterial{});
+    Mesh icosphere(const PBRMaterial& material = PBRMaterial{});
+    Mesh torus(const PBRMaterial& material = PBRMaterial{});
+    Mesh cube(const PBRMaterial& material = PBRMaterial{});
+    Mesh cylinder(const PBRMaterial& material = PBRMaterial{});
+    Mesh teapot(const PBRMaterial& material = PBRMaterial{});
+    Mesh monkey(const PBRMaterial& material = PBRMaterial{});
 }
 
 #endif 

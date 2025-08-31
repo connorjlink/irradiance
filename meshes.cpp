@@ -5,32 +5,32 @@
 
 namespace ir
 {
-    std::vector<Object*> icosphere(const glm::mat4& transform, const PBRMaterial& material)
+    MeshInstance icosphere(const PBRMaterial& material)
     {
         return load_obj("icosphere.obj", transform, material);
     }
 
-    std::vector<Object*> torus(const glm::mat4& transform, const PBRMaterial& material)
+    MeshInstance torus(const glm::mat4& transform, const PBRMaterial& material)
     {
         return load_obj("torus.obj", transform, material);
     }
 
-    std::vector<Object*> cube(const glm::mat4& transform, const PBRMaterial& material)
+    MeshInstance cube(const glm::mat4& transform, const PBRMaterial& material)
     {
         return load_obj("cube.obj", transform, material);
     }
 
-    std::vector<Object*> cylinder(const glm::mat4& transform, const PBRMaterial& material)
+    MeshInstance cylinder(const glm::mat4& transform, const PBRMaterial& material)
     {
         return load_obj("cylinder.obj", transform, material);
     }
 
-    std::vector<Object*> teapot(const glm::mat4& transform, const PBRMaterial& material)
+    MeshInstance teapot(const glm::mat4& transform, const PBRMaterial& material)
     {
         return load_obj("teapot.obj", transform, material);
     }
 
-    std::vector<Object*> monkey(const glm::mat4& transform, const PBRMaterial& material)
+    MeshInstance monkey(const glm::mat4& transform, const PBRMaterial& material)
     {
         return load_obj("monkey.obj", transform, material);
     }

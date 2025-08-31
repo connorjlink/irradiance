@@ -4,14 +4,17 @@
 #include "renderer.h"
 #include "textures.h"
 
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+
 // scenes.h
 // (c) 2025 Connor J. Link. All Rights Reserved.
 
 namespace ir
 {
-    std::vector<Object*> test_spheres() 
+    MeshInstance test_spheres() 
     {
-        return
+        static const auto mesh = Mesh
         {
             new Sphere
             {
@@ -326,11 +329,17 @@ namespace ir
                 }
             }
         };
+
+        return
+        {
+            glm::identity<glm::mat4>(),
+            mesh,
+        };
     };
 
-    std::vector<Object*> cornell_box()
+    MeshInstance cornell_box()
     {
-        return
+        static const auto mesh = Mesh
         {
             new Quadrilateral
             {
@@ -430,6 +439,12 @@ namespace ir
                     .roughness = 1.f,
                 }
             }
+        };
+
+        return MeshInstance
+        {
+            glm::identity<glm::mat4>(),
+            mesh,
         };
     }
 }

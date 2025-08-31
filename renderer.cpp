@@ -264,14 +264,14 @@ namespace ir
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
     // Utility function that does not meaningfully affect project functionality.
-    std::vector<Object*> load_obj(const std::string& filepath, const glm::mat4& transform, const PBRMaterial& default_material)
+    MeshInstance load_obj(const std::string& filepath, const PBRMaterial& default_material)
     {
-        std::vector<Object*> objects{};
+        Mesh objects{};
 
         std::ifstream file(filepath);
         if (!file.good())
         {
-            return objects;
+            return { glm::identity<glm::mat4>(), objects };
         }
 
         std::vector<glm::vec3> vertices{};
@@ -285,16 +285,17 @@ namespace ir
                 continue;
             }
 
+            // TODO: incorporate normals and normal smoothing as necessary
+            // TODO: incorporate texture coordinates as necessary
+            // TODO: incorporate material files as necessary
+
             if (tokens[0] == "v" && tokens.size() >= 4)
             {
                 const auto x = std::stof(tokens[1]);
                 const auto y = std::stof(tokens[2]);
                 const auto z = std::stof(tokens[3]);
 
-                const auto vector = glm::vec4{ x, y, z, 1.f };
-                const auto transformed = transform * vector;
-
-                vertices.emplace_back(transformed.x, transformed.y, transformed.z);
+                vertices.emplace_back(x, y, z);
             }
             else if (tokens[0] == "f" && tokens.size() >= 4)
             {
@@ -337,6 +338,6 @@ namespace ir
             }
         }
 
-        return objects;
+        return { transform, objects };
     }
 }

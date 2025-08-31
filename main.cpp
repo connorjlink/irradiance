@@ -138,10 +138,42 @@ public:
         Real probability = 0.f;
     };
 
-    std::vector<Object*> scene_objects;
+    std::vector<MeshInstance> scene_instances;
     std::vector<Emitter> emissive_objects;
 
 private:
+    RayIntersection compute_nearest_intersection(const Ray& ray) const
+    {
+        auto nearest_intersection = RayIntersection{};
+        for (const auto& instance : scene_instances)
+        {
+            for (const auto object : instance.mesh)
+            {
+                if (!object)
+                {
+                    continue;
+                }
+
+                // transform ray into object's local space
+                const auto ray_transformed = Ray
+                {
+                    .origin = glm::vec3{ instance.inverse * glm::vec4{ ray.origin, 1.f } },
+                    // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
+                    .direction = glm::normalize(glm::vec3{ instance.inverse * glm::vec4{ ray.direction, 0.f } }),
+                };
+
+                const auto intersection = object->intersect(ray_transformed);
+
+                if (intersection.hit && intersection.depth < nearest_intersection.depth)
+                {
+                    nearest_intersection = intersection;
+                }
+            }
+        }
+
+        return nearest_intersection;
+    }
+
     glm::vec3 compute_direction() const
     {
         const auto yaw_radians = glm::radians(yaw_degrees);
@@ -196,16 +228,7 @@ private:
         // TODO: bounding volume hierarchy acceleration structure
 
         // sort to find the nearest intersection for correct geometry rendering
-        auto nearest_intersection = RayIntersection{};
-        for (const auto& object : scene_objects)
-        {
-            const auto intersection = object->intersect(ray);
-
-            if (intersection.hit && intersection.depth < nearest_intersection.depth)
-            {
-                nearest_intersection = intersection;
-            }
-        }
+        const auto nearest_intersection = compute_nearest_intersection(ray);
 
         if (nearest_intersection.hit)
         {
@@ -373,52 +396,55 @@ public:
         initialize_textures();
 
     #ifndef CORNELL
-        scene_objects = test_spheres();
+        scene_instances.emplace_back(test_spheres());
     #else
-        scene_objects = cornell_box();
+        scene_objects.emplace_back(cornell_box());
     #endif
 
-        scene_objects.emplace_back(new Sphere
-        { 
-            glm::vec3{ .5f, .6f, .5f }, 
-            .4f, 
-            PBRMaterial
-            {
-                .albedo = glm::vec3{ .2f, .4f, .9f },
-                .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                .metallicity = 0.f,
-                .refraction_index = -.1f,
-                .anisotropy = 0.f,
-                .roughness = 0.f,
-                .transmission = .1f,
+        static const auto sphere = Mesh
+        {
+            new Sphere
+            { 
+                glm::vec3{ .5f, .6f, .5f }, 
+                .4f, 
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .2f, .4f, .9f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .refraction_index = -.1f,
+                    .anisotropy = 0.f,
+                    .roughness = 0.f,
+                    .transmission = .1f,
+                }
             }
-        });
+        };
 
-        const auto mesh = cube(glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }), PBRMaterial
+        scene_instances.emplace_back(MeshInstance{ glm::identity<glm::mat4>(), sphere });
+
+        // static const auto mesh = cube(glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }), PBRMaterial
+        // {
+        //     .albedo = glm::vec3{ .9f, .9f, .9f },
+        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .metallicity = 0.f,
+        //     .anisotropy = 0.f,
+        //     .roughness = .5f,
+        // });
+        // scene_instances.emplace_back(mesh);
+
+        for (auto& instance : scene_instances)
         {
-            .albedo = glm::vec3{ .9f, .9f, .9f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .anisotropy = 0.f,
-            .roughness = .5f,
-        });
-        scene_objects.insert(scene_objects.end(), mesh.begin(), mesh.end());
-
-        //scene_objects.insert(scene_objects.end(), icosphere.begin(), icosphere.end());
-        //scene_objects.insert(scene_objects.end(), torus.begin(), torus.end());
-        //scene_objects.insert(scene_objects.end(), cylinder.begin(), cylinder.end());
-        //scene_objects.insert(scene_objects.end(), teapot.begin(), teapot.end());
-
-        for (auto& object : scene_objects)
-        {
-            if (object && object->material.emission != glm::vec3{ 0.f })
+            for (auto object : instance.mesh)
             {
-                emissive_objects.emplace_back(Emitter
-                { 
-                    .object = object, 
-                    .power = glm::length(object->material.emission), 
-                    .probability = 0.f,
-                });
+                if (object && object->material.emission != glm::vec3{ 0.f })
+                {
+                    emissive_objects.emplace_back(Emitter
+                    { 
+                        .object = object, 
+                        .power = glm::length(object->material.emission), 
+                        .probability = 0.f,
+                    });
+                }
             }
         }
 
@@ -471,19 +497,7 @@ public:
             // explicit copy to avoid threading issues with the main render loop
             auto ray = rays[pixel];
 
-            // TODO: incorporate with new bounding volume accelerator
-
-            auto nearest_intersection = RayIntersection{};
-            for (const auto& object : scene_objects)
-            {
-                const auto intersection = object->intersect(ray);
-
-                if (intersection.hit && intersection.depth < nearest_intersection.depth)
-                {
-                    nearest_intersection = intersection;
-                }
-            }
-
+            const auto nearest_intersection = compute_nearest_intersection(ray); 
             if (nearest_intersection.hit)
             {
                 focal_distance = nearest_intersection.depth;
@@ -779,7 +793,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
