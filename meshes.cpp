@@ -5,33 +5,33 @@
 
 namespace ir
 {
-    MeshInstance icosphere(const PBRMaterial& material)
+    Mesh icosphere(const PBRMaterial& material)
     {
-        return load_obj("icosphere.obj", transform, material);
+        return load_obj("icosphere.obj", material);
     }
 
-    MeshInstance torus(const glm::mat4& transform, const PBRMaterial& material)
+    Mesh torus(const PBRMaterial& material)
     {
-        return load_obj("torus.obj", transform, material);
+        return load_obj("torus.obj", material);
     }
 
-    MeshInstance cube(const glm::mat4& transform, const PBRMaterial& material)
+    Mesh cube(const PBRMaterial& material)
     {
-        return load_obj("cube.obj", transform, material);
+        return load_obj("cube.obj", material);
     }
 
-    MeshInstance cylinder(const glm::mat4& transform, const PBRMaterial& material)
+    Mesh cylinder(const PBRMaterial& material)
     {
-        return load_obj("cylinder.obj", transform, material);
+        return load_obj("cylinder.obj", material);
     }
 
-    MeshInstance teapot(const glm::mat4& transform, const PBRMaterial& material)
+    Mesh teapot(const PBRMaterial& material)
     {
-        return load_obj("teapot.obj", transform, material);
+        return load_obj("teapot.obj", material);
     }
 
-    MeshInstance monkey(const glm::mat4& transform, const PBRMaterial& material)
+    Mesh monkey(const PBRMaterial& material)
     {
-        return load_obj("monkey.obj", transform, material);
+        return load_obj("monkey.obj", material);
     }
 }

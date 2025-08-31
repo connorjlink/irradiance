@@ -247,7 +247,7 @@ namespace ir
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = .9f,
                     .anisotropy = 0.f,
-                    .roughness = .1f,
+                    .roughness = .4f,
                 }
             },
             new Sphere

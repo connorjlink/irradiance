@@ -264,14 +264,14 @@ namespace ir
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
     // Utility function that does not meaningfully affect project functionality.
-    MeshInstance load_obj(const std::string& filepath, const PBRMaterial& default_material)
+    Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material)
     {
         Mesh objects{};
 
         std::ifstream file(filepath);
         if (!file.good())
         {
-            return { glm::identity<glm::mat4>(), objects };
+            return objects;
         }
 
         std::vector<glm::vec3> vertices{};
@@ -338,6 +338,6 @@ namespace ir
             }
         }
 
-        return { transform, objects };
+        return objects;
     }
 }

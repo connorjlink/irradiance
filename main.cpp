@@ -422,15 +422,20 @@ public:
 
         scene_instances.emplace_back(MeshInstance{ glm::identity<glm::mat4>(), sphere });
 
-        // static const auto mesh = cube(glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }), PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ .9f, .9f, .9f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = 0.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = .5f,
-        // });
-        // scene_instances.emplace_back(mesh);
+        static const auto mesh = cube(PBRMaterial
+        {
+            .albedo = glm::vec3{ .9f, .9f, .9f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = .5f,
+        });
+        static const auto mesh_instance = MeshInstance
+        {
+            glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }),
+            mesh
+        };
+        scene_instances.emplace_back(mesh_instance);
 
         for (auto& instance : scene_instances)
         {

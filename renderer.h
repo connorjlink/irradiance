@@ -151,7 +151,7 @@ namespace ir
         }
     };
 
-    MeshInstance load_obj(const std::string& filepath, const PBRMaterial& default_material);
+    Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material);
 }
 
 #endif
