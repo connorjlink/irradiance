@@ -282,11 +282,25 @@ private:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                return trace(ray, bounces - 1) / reflection_weight;
+                return albedo * trace(ray, bounces - 1) / reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
             {
                 // dielectric refraction
+                const auto eta = glm::dot(normal, -ray.direction) > 0.f 
+                    ? (1.f / nearest_intersection.material.refraction_index) 
+                    : nearest_intersection.material.refraction_index;
+
+                const auto refraction = glm::refract(ray.direction, normal, eta);
+
+                // NOTE: IMPORTANT--OFFSET IS A NEGATIVE MARGIN TO AVOID SELF-INTERSECTION FOR REFRACTION RAY
+                ray.origin = nearest_intersection.position - normal * .001f;
+                // TODO: sample according to roughness and anisotropy
+                ray.direction = glm::normalize(refraction + random_in_unit_sphere * nearest_intersection.material.roughness);
+
+                const auto attenuation = glm::exp(-mat.absorption * nearest_intersection.depth);
+
+                return attenuation * trace(ray, bounces - 1) / refraction_weight;
             }
             else
             {
@@ -352,8 +366,8 @@ public:
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
 
         initialize_textures();
-        //scene_objects = test_spheres();
-        scene_objects = cornell_box();
+        scene_objects = test_spheres();
+        //scene_objects = cornell_box();
 
         scene_objects.emplace_back(new Sphere
         { 

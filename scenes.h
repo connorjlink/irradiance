@@ -137,11 +137,12 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .56f, .518f, .835f },
-                    .absorption = glm::vec3{ .56f, .518f, .835f },
+                    .absorption = glm::vec3{ 1.f, 1.f, 1.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
+                    .refraction_index = 1.5f,
                     .anisotropy = 0.f,
-                    .roughness = .1f,
+                    .roughness = 0.f,
                     .transmission = 1.f,
                 }
             },
@@ -157,6 +158,22 @@ namespace ir
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
+                }
+            },
+            new Sphere
+            {
+                glm::vec3{ -8.f, -7.f, 4.f },
+                1.f,
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ 1.f, .05f, .025f },
+                    .absorption = glm::vec3{ .1f, .1f, .1f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .refraction_index = 1.5f,
+                    .anisotropy = 0.f,
+                    .roughness = .05f,
+                    .transmission = .05f,
                 }
             },
             new Sphere
@@ -291,8 +308,10 @@ namespace ir
                     .absorption = glm::vec3{ 0.f, 0.f, 0.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
+                    .refraction_index = 1.5f,
                     .anisotropy = 0.f,
-                    .roughness = 1.f,
+                    .roughness = 0.f,
+                    .transmission = 1.f,
                     .texture = water.get(),
                 }
             }
