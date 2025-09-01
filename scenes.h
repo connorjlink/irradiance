@@ -134,7 +134,7 @@ namespace ir
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
-                    .refraction_index = -.99f,
+                    .refraction_index = 1.5f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
                     .transmission = 1.f,
@@ -149,7 +149,7 @@ namespace ir
                     .albedo = glm::vec3{ .7f, 1.f, .8f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
-                    .refraction_index = .85f,
+                    .refraction_index = 1.85f,
                     .anisotropy = 0.f,
                     .roughness = .01f,
                     .transmission = .91f,
@@ -163,11 +163,45 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .5f, 1.f, .6f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = .75f,
+                    .metallicity = 0.f,
+                    .refraction_index = 1.01f,
                     .anisotropy = 0.f,
-                    .roughness = .75f,
-                    .texture = wood.get(),
+                    .roughness = 0.f,
+                    .transmission = 1.f,
                 }
+            },
+            new Cuboid
+            {
+                glm::vec3{ -2.5f, -6.5f, -.5f },
+                glm::vec3{ 1.f, 1.f, 1.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .5f, 1.f, .6f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .refraction_index = 1.76f,
+                    .anisotropy = 0.f,
+                    .roughness = 0.f,
+                    .transmission = 1.f,
+                }
+            },
+            new Colloid
+            {
+                .5f,
+                new Cuboid
+                {
+                    glm::vec3{ -3.5f, -6.5f, -.5f },
+                    glm::vec3{ 1.f, 1.f, 1.f },
+                    PBRMaterial
+                    {
+                        .albedo = glm::vec3{ .5f, 1.f, .6f },
+                        .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                        .metallicity = .75f,
+                        .anisotropy = 0.f,
+                        .roughness = .75f,
+                        .transmission = .5f,
+                    }
+                },
             },
             new Sphere
             {
@@ -193,7 +227,7 @@ namespace ir
                     .albedo = glm::vec3{ .25f, .75, .4f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
-                    .refraction_index = -.67f,
+                    .refraction_index = 1.67f,
                     .anisotropy = 0.f,
                     .roughness = .1f,
                     .transmission = .1f,
@@ -209,7 +243,7 @@ namespace ir
                     .albedo = glm::vec3{ 1.f, .05f, .025f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
-                    .refraction_index = -.1f,
+                    .refraction_index = 1.1f,
                     .anisotropy = 0.f,
                     .roughness = .05f,
                     .transmission = .1f,
@@ -243,19 +277,6 @@ namespace ir
                         .anisotropy = 0.f,
                         .roughness = 0.f,
                     }
-                }
-            },
-            new Sphere
-            {
-                glm::vec3{ 4.f, 1.f, 5.f },
-                1.f,
-                PBRMaterial
-                {
-                    .albedo = glm::vec3{ .1f, 1.f, .1f },
-                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 1.f,
-                    .anisotropy = 0.f,
-                    .roughness = 0.f,
                 }
             },
             new Sphere
@@ -388,79 +409,58 @@ namespace ir
     {
         static const auto mesh = Mesh
         {
+            // left wall (red)
             new Quadrilateral
             {
-                glm::vec3{ -1.f, 1.f, 1.f },
                 glm::vec3{ 1.f, 1.f, 1.f },
                 glm::vec3{ 1.f, -1.f, 1.f },
+                glm::vec3{ 1.f, 1.f, -1.f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ .75f, .25f, .25f },
+                    .albedo = glm::vec3{ 1.f, .25f, .25f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
                 }
             },
+
+            // right wall (green)
             new Quadrilateral
             {
                 glm::vec3{ -1.f, 1.f, -1.f },
-                glm::vec3{ 1.f, 1.f, -1.f },
                 glm::vec3{ -1.f, -1.f, -1.f },
-                PBRMaterial
-                {
-                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
-                    .anisotropy = 0.f,
-                    .roughness = 1.f,
-                }
-            },
-            new Quadrilateral
-            {
-                glm::vec3{ -1.f, 1.f, 1.f },
-                glm::vec3{ -1.f, 1.f, -1.f },
-                glm::vec3{ -1.f, -1.f, 1.f },
-                PBRMaterial
-                {
-                    .albedo = glm::vec3{ .25f, .75f, .25f },
-                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
-                    .anisotropy = 0.f,
-                    .roughness = 1.f,
-                }
-            },
-            new Quadrilateral
-            {
-                glm::vec3{ 1.f, 1.f, -1.f },
-                glm::vec3{ 1.f, 1.f, 1.f },
-                glm::vec3{ 1.f, -1.f, -1.f },
-                PBRMaterial
-                {
-                    .albedo = glm::vec3{ .25f, .25f, .75f },
-                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
-                    .anisotropy = 0.f,
-                    .roughness = 1.f,
-                }
-            },
-            new Quadrilateral
-            {
-                glm::vec3{ -1.f, 1.f, -1.f },
-                glm::vec3{ 1.f, 1.f, -1.f },
                 glm::vec3{ -1.f, 1.f, 1.f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+                    .albedo = glm::vec3{ .25f, 1.f, .25f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
                 }
             },
+
+            // back wall (white)
             new Quadrilateral
             {
-                glm::vec3{ 1.f, -1.f, 1.f },
+                glm::vec3{ -1.f, 1.f, -1.f },
+                glm::vec3{ -1.f, -1.f, -.95f },
+                glm::vec3{ 1.f, 1.f, -1.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+                    .emission = glm::vec3{ 0.f, 0.f , 0.f },
+                    .metallicity = 0.f,
+                    .anisotropy = 0.f,
+                    .roughness = 1.f,
+                }
+            },
+
+            // floor (white)
+            new Quadrilateral
+            {
+                glm::vec3{ -1.f, -1.f, -1.f },
                 glm::vec3{ -1.f, -1.f, 1.f },
                 glm::vec3{ 1.f, -1.f, -1.f },
                 PBRMaterial
@@ -472,15 +472,49 @@ namespace ir
                     .roughness = 1.f,
                 }
             },
+
+            // ceiling (white)
             new Quadrilateral
             {
-                glm::vec3{ .5f, -.99f, .5f },
-                glm::vec3{ -.5f, -.99f, .5f },
-                glm::vec3{ .5f, -.99f, -.5f },
+                glm::vec3{ -1.f, 1.f, -1.f },
+                glm::vec3{ 1.f, 1.f, -1.f },
+                glm::vec3{ -1.f, 1.f, 1.f },
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .emission = glm::vec3{ 3e1f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .anisotropy = 0.f,
+                    .roughness = 1.f,
+                }
+            },
+
+            // front wall (blue)
+            new Quadrilateral
+            {
+                glm::vec3{  2.f, 1.f, 1.f },
+                glm::vec3{  2.f, -2.f, .95f },
+                glm::vec3{ -1.f, 1.f, 1.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .25f, .25f, 1.f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .anisotropy = 0.f,
+                    .roughness = 1.f,
+                }
+            },
+
+            // light source (emissive white)
+            new Quadrilateral
+            {
+                glm::vec3{ .75f, -.99f, .75f },
+                glm::vec3{ -.75f, -.99f, .75f },
+                glm::vec3{ .75f, -.99f, -.75f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+                    .emission = glm::vec3{ 4e1f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,

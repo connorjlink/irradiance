@@ -37,8 +37,8 @@ namespace ir
         /* 0 = dielectric, 1 = metal */
         Real metallicity;
 
-        /* varies dielectric intersection by Snell's law, default of 1/1.5 similar to real glass */
-        Real refraction_index = .67f;
+        /* varies dielectric intersection by Snell's law, default of 1.5 similar to real glass */
+        Real refraction_index = 1.5f;
 
         /* 0 = isotropic roughness, 1 = anistropic roughness */
         Real anisotropy;

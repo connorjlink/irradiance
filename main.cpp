@@ -113,7 +113,7 @@ private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
     bool last_dirty = false;
-    glm::vec3 position = { 0.f, 0.f, -0.99f };
+    glm::vec3 position = { 0.f, 0.f, -0.95f };
     Real fov_degrees = 90.f;
     Real yaw_degrees = 0.f;
     Real pitch_degrees = 0.f;
@@ -386,7 +386,6 @@ public:
         scene_instances.emplace_back(test_spheres());
     #else
         scene_instances.emplace_back(cornell_box());
-    #endif
 
         static const auto sphere = Mesh
         {
@@ -399,7 +398,7 @@ public:
                     .albedo = glm::vec3{ .2f, .4f, .9f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
-                    .refraction_index = -.1f,
+                    .refraction_index = .99f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
                     .transmission = .1f,
@@ -414,18 +413,20 @@ public:
             .albedo = glm::vec3{ .2f, .4f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
             .metallicity = 0.f,
-            .refraction_index = -.5f,
+            .refraction_index = 4.f,
             .anisotropy = 0.f,
-            .roughness = 0.f,
-            .transmission = .9f,
+            .roughness = .01f,
+            .transmission = .97f,
         });
         static const auto prism_instance = MeshInstance
         {
-            glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, -.5f, -.5f }),
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ 0.f, 0.f, -.5f }), glm::radians(45.f), UP),
             prism
         };
 
         scene_instances.emplace_back(prism_instance);
+
+    #endif
 
         for (auto& instance : scene_instances)
         {
@@ -788,7 +789,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }

@@ -235,36 +235,33 @@ namespace ir
 
         const auto t1 = tmin >= 0.f ? tmin : tmax;
         const auto t2 = tmin < 0.f ? tmax : tmin;
-        if (t1 <= .001f)
+
+        if (t1 > 0.f)
         {
-            return MISS;
+            auto intersection = ray.origin + ray.direction * t1;
+            auto normal = normal_of(intersection);
+
+            intersection += normal * .001f;
+
+            const auto difference = intersection - centroid;
+            // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
+            const auto u = .5f + glm::atan2(difference.z, difference.x) / (2.f * glm::pi<Real>());
+            const auto v = .5f + glm::asin(difference.y / glm::length(difference)) / glm::pi<Real>();
+
+            return 
+            {
+                .position = intersection,
+                .normal = normal,
+                .material = material,
+                .depth = t1,
+                .exit = t2,
+                .hit = true,
+                .object = this,
+                .uv = { u, v },
+            };
         }
 
-        auto intersection = ray.origin + ray.direction * t1;
-        auto normal = normal_of(intersection);
-        if (glm::dot(normal, ray.direction) > 0.f)
-        {
-            normal = -normal;
-        }
-
-        intersection += normal * .001f;
-
-        const auto difference = intersection - centroid;
-        // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
-        const auto u = .5f + glm::atan2(difference.z, difference.x) / (2.f * glm::pi<Real>());
-        const auto v = .5f + glm::asin(difference.y / glm::length(difference)) / glm::pi<Real>();
-
-        return 
-        {
-            .position = intersection,
-            .normal = normal,
-            .material = material,
-            .depth = t1,
-            .exit = t2,
-            .hit = true,
-            .object = this,
-            .uv = { u, v },
-        };
+        return MISS;
     }
 
     glm::vec3 Cuboid::sample()
