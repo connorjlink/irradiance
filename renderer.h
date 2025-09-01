@@ -141,16 +141,24 @@ namespace ir
     public:
         // Ax^2 + By^2 + Cz^2 + Dxy + Exz + Fyz + Gx + Hy + Iz + J = 0
         Real A, B, C, D, E, F, G, H, I, J;
-        glm::vec3 origin;
-        glm::vec3 size;
+        Cuboid* bounds;
 
     public:
         Quadric(Real A, Real B, Real C, Real D, Real E, Real F, Real G, Real H, Real I, Real J, const glm::vec3& origin, const glm::vec3& size, const PBRMaterial& material)
-            : A{ A }, B{ B }, C{ C }, D{ D }, E{ E }, F{ F }, G{ G }, H{ H }, I{ I }, J{ J }, origin{ origin }, size{ size }, Object{ material }
+            : A{ A }, B{ B }, C{ C }, D{ D }, E{ E }, F{ F }, G{ G }, H{ H }, I{ I }, J{ J }, Object{ material }
         {
             // quick and dirty approximations since there don't seem to be any easy closed-form solutions
             area = size.x * size.z;
             centroid = origin + size / 2.f;
+            bounds = new Cuboid{ origin, size, material };
+        }
+
+    private:
+        Real function(const glm::vec3& position)
+        {
+            return (A * position.x * position.x) + (B * position.y * position.y) + (C * position.z * position.z) + 
+                   (D * position.x * position.y) + (E * position.x * position.z) + (F * position.y * position.z) +
+                   (G * position.x) + (H * position.y) + (I * position.z) + J;
         }
 
     public:

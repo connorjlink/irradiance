@@ -163,11 +163,10 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .5f, 1.f, .6f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
-                    .refraction_index = .67f,
+                    .metallicity = .75f,
                     .anisotropy = 0.f,
-                    .roughness = .02f,
-                    .transmission = .91f,
+                    .roughness = .75f,
+                    .texture = wood.get(),
                 }
             },
             new Sphere
@@ -181,6 +180,24 @@ namespace ir
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
+                }
+            },
+            new Quadric
+            {
+                // hyperbolic paraboloid https://en.wikipedia.org/wiki/Paraboloid
+                1.f, -1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, -1.f, 0.f,
+                glm::vec3{ -20.f, -12.f, 0.f },
+                glm::vec3{ 10.f, 10.f, 10.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .25f, .75, .4f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 1.f,
+                    .refraction_index = -.67f,
+                    .anisotropy = 0.f,
+                    .roughness = .1f,
+                    .transmission = .1f,
+                    .texture = perlin_low.get(),
                 }
             },
             new Sphere

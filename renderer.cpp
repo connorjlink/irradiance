@@ -36,7 +36,7 @@ namespace ir
         if (d > 0.f)
         {
             const auto t1 = (-b - glm::sqrt(d)) / (2.f * a);
-            [[maybe_unused]] const auto t2 = (-b + glm::sqrt(d)) / (2.f * a);
+            const auto t2 = (-b + glm::sqrt(d)) / (2.f * a);
 
             if (t1 > 0.f)
             {
@@ -249,6 +249,11 @@ namespace ir
 
         intersection += normal * .001f;
 
+        const auto difference = intersection - centroid;
+        // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
+        const auto u = .5f + glm::atan2(difference.z, difference.x) / (2.f * glm::pi<Real>());
+        const auto v = .5f + glm::asin(difference.y / glm::length(difference)) / glm::pi<Real>();
+
         return 
         {
             .position = intersection,
@@ -258,7 +263,7 @@ namespace ir
             .exit = t2,
             .hit = true,
             .object = this,
-            .uv = { 0.f, 0.f },
+            .uv = { u, v },
         };
     }
 
@@ -312,6 +317,96 @@ namespace ir
         }  
 
         return glm::vec3{ 0.f };
+    }
+
+    RayIntersection Quadric::intersect(const Ray& ray)
+    {
+        const auto& O = ray.origin;
+        const auto& R = ray.direction;
+        const auto& M = centroid;
+
+        const auto a = (A * R.x * R.x) + (B * R.y * R.y) + (C * R.z * R.z) + 
+                       (D * R.x * R.y) + (E * R.x * R.z) + (F * R.y * R.z);
+
+        const auto b = (2.f * A * (O.x - M.x) * R.x) + (2.f * B * (O.y - M.y) * R.y) + (2.f * C * (O.z - M.z) * R.z) + 
+                       (D * ((O.x - M.x) * R.y + (O.y - M.y) * R.x)) + 
+                       (E * ((O.x - M.x) * R.z + (O.z - M.z) * R.x)) + 
+                       (F * ((O.y - M.y) * R.z + (O.z - M.z) * R.y)) +
+                       (G * R.x + H * R.y + I * R.z);
+
+        const auto c = (A * (O.x - M.x) * (O.x - M.x)) + (B * (O.y - M.y) * (O.y - M.y)) + (C * (O.z - M.z) * (O.z - M.z)) + 
+                       (D * (O.x - M.x) * (O.y - M.y)) +
+                       (E * (O.x - M.x) * (O.z - M.z)) +
+                       (F * (O.y - M.y) * (O.z - M.z)) +
+                       (G * (O.x - M.x) + H * (O.y - M.y) + I * (O.z - M.z)) + J;
+
+        const auto d = (b * b) - (4.f * a * c);
+
+        if (d > 0.f)
+        {
+            const auto t1 = (-b - glm::sqrt(d)) / (2.f * a);
+            const auto t2 = (-b + glm::sqrt(d)) / (2.f * a);
+
+            if (t1 > 0.f)
+            {
+                const auto intersection = ray.origin + ray.direction * t1;
+                auto normal = normal_of(intersection);
+
+                // effectively clamp the quadric surface to the corresponding clip cube
+                if (glm::any(glm::lessThan(intersection, bounds->origin)) || 
+                    glm::any(glm::greaterThan(intersection, bounds->origin + bounds->size)))
+                {
+                    return MISS;
+                }
+
+                const auto difference = intersection - bounds->centroid;
+                // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
+                const auto u = .5f + glm::atan2(difference.z, difference.x) / (2.f * glm::pi<Real>());
+                const auto v = .5f + glm::asin(difference.y / glm::length(difference)) / glm::pi<Real>();
+
+                return 
+                {
+                    .position = intersection,
+                    .normal = normal,
+                    .material = material,
+                    .depth = t1,
+                    .exit = t2,
+                    .hit = true,
+                    .object = this,
+                    .uv = { u, v },
+                };
+            }
+        }
+
+        return MISS;
+    }
+
+    // TODO: proper sampling instead of random chance
+    glm::vec3 Quadric::sample()
+    {
+        auto point = glm::vec3{};
+        do
+        {
+            point = glm::linearRand(bounds->origin, bounds->origin + bounds->size);
+        } 
+        while (glm::abs(function(point)) > .001f);
+
+        return point;
+    }
+
+    glm::vec3 Quadric::normal_of(const glm::vec3& position)
+    {
+        // derivatives of the quadric function
+        // d/dx = 2Ax + Dy + Ez + G = 0
+        // d/dy = 2By + Dx + Fz + H = 0
+        // d/dz = 2Cz + Ex + Fy + I = 0
+
+        return glm::normalize(glm::vec3
+        {
+            2.f * A * (position.x - centroid.x) + D * (position.y - centroid.y) + E * (position.z - centroid.z) + G,
+            2.f * B * (position.y - centroid.y) + D * (position.x - centroid.x) + F * (position.z - centroid.z) + H,
+            2.f * C * (position.z - centroid.z) + E * (position.x - centroid.x) + F * (position.y - centroid.y) + I,
+        });
     }
 
     RayIntersection Colloid::intersect(const Ray& ray)
