@@ -24,6 +24,20 @@ namespace
 
 namespace ir
 {
+    bool BoundingVolume::contains(const glm::vec3& point) const
+    {
+        return (point.x >= origin.x) && (point.x <= origin.x + size.x) &&
+               (point.y >= origin.y) && (point.y <= origin.y + size.y) &&
+               (point.z >= origin.z) && (point.z <= origin.z + size.z);
+    }
+
+    bool BoundingVolume::intersects(const BoundingVolume& other) const
+    {
+        return (origin.x <= other.origin.x + other.size.x) && (origin.x + size.x >= other.origin.x) &&
+               (origin.y <= other.origin.y + other.size.y) && (origin.y + size.y >= other.origin.y) &&
+               (origin.z <= other.origin.z + other.size.z) && (origin.z + size.z >= other.origin.z);
+    }
+
     RayIntersection Sphere::intersect(const Ray& ray)
     {
         const auto difference = ray.origin - center;
@@ -76,6 +90,11 @@ namespace ir
     glm::vec3 Sphere::normal_of(const glm::vec3& position)
     {
         return glm::normalize(position - center);
+    }
+
+    BoundingVolume Sphere::bounds()
+    {
+        return BoundingVolume{ center - glm::vec3{ radius }, glm::vec3{ 2.f * radius } };
     }
 
     RayIntersection Triangle::intersect(const Ray& ray)
@@ -150,6 +169,15 @@ namespace ir
         return normal;
     }
 
+    BoundingVolume Triangle::bounds()
+    {
+        // check by complete extent
+        const auto minimum = glm::min(v0, glm::min(v1, v2));
+        const auto maximum = glm::max(v0, glm::max(v1, v2));
+
+        return BoundingVolume{ minimum, maximum - minimum };
+    }
+
     RayIntersection Quadrilateral::intersect(const Ray& ray)
     {
         // quad intersection from https://raytracing.github.io/books/RayTracingTheNextWeek.html
@@ -206,6 +234,15 @@ namespace ir
     glm::vec3 Quadrilateral::normal_of(const glm::vec3& position)
     {
         return normal;
+    }
+
+    BoundingVolume Quadrilateral::bounds()
+    {
+        // check by complete extent
+        const auto minimum = glm::min(v0, glm::min(glm::min(v0 + v1, v0 + v2), v0 + v1 + v2));
+        const auto maximum = glm::max(v0, glm::max(glm::max(v0 + v1, v0 + v2), v0 + v1 + v2));
+
+        return BoundingVolume{ minimum, maximum - minimum };
     }
 
     RayIntersection Cuboid::intersect(const Ray& ray)
@@ -316,6 +353,11 @@ namespace ir
         return glm::vec3{ 0.f };
     }
 
+    BoundingVolume Cuboid::bounds()
+    {
+        return BoundingVolume{ origin, size };
+    }
+
     RayIntersection Quadric::intersect(const Ray& ray)
     {
         const auto& O = ray.origin;
@@ -350,13 +392,13 @@ namespace ir
                 auto normal = normal_of(intersection);
 
                 // effectively clamp the quadric surface to the corresponding clip cube
-                if (glm::any(glm::lessThan(intersection, bounds->origin)) || 
-                    glm::any(glm::greaterThan(intersection, bounds->origin + bounds->size)))
+                if (glm::any(glm::lessThan(intersection, container->origin)) || 
+                    glm::any(glm::greaterThan(intersection, container->origin + container->size)))
                 {
                     return MISS;
                 }
 
-                const auto difference = intersection - bounds->centroid;
+                const auto difference = intersection - container->centroid;
                 // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
                 const auto u = .5f + glm::atan2(difference.z, difference.x) / (2.f * glm::pi<Real>());
                 const auto v = .5f + glm::asin(difference.y / glm::length(difference)) / glm::pi<Real>();
@@ -384,7 +426,7 @@ namespace ir
         auto point = glm::vec3{};
         do
         {
-            point = glm::linearRand(bounds->origin, bounds->origin + bounds->size);
+            point = glm::linearRand(container->origin, container->origin + container->size);
         } 
         while (glm::abs(function(point)) > .001f);
 
@@ -404,6 +446,11 @@ namespace ir
             2.f * B * (position.y - centroid.y) + D * (position.x - centroid.x) + F * (position.z - centroid.z) + H,
             2.f * C * (position.z - centroid.z) + E * (position.x - centroid.x) + F * (position.y - centroid.y) + I,
         });
+    }
+
+    BoundingVolume Quadric::bounds()
+    {
+        return container->bounds();
     }
 
     RayIntersection Colloid::intersect(const Ray& ray)
@@ -458,6 +505,11 @@ namespace ir
     glm::vec3 Colloid::normal_of(const glm::vec3& position)
     {
         return glm::sphericalRand(1.f);
+    }
+
+    BoundingVolume Colloid::bounds()
+    {
+        return container->bounds();
     }
 
     RayIntersection MeshInstance::intersect(const Ray& ray) const

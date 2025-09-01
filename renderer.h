@@ -9,6 +9,23 @@
 
 namespace ir
 {
+    struct BoundingVolume
+    {
+    public:
+        glm::vec3 origin;
+        glm::vec3 size;
+
+    public:
+        BoundingVolume(const glm::vec3& origin, const glm::vec3& size)
+            : origin{ origin }, size{ size }
+        {
+        }
+
+    public:
+        bool contains(const glm::vec3& point) const;
+        bool intersects(const BoundingVolume& other) const;
+    };
+
     struct Object
     {
     public:
@@ -27,6 +44,7 @@ namespace ir
         virtual RayIntersection intersect(const Ray& ray) = 0;
         virtual glm::vec3 sample() = 0;
         virtual glm::vec3 normal_of(const glm::vec3& position) = 0;
+        virtual BoundingVolume bounds() = 0;
     };
 
     struct Sphere : public Object
@@ -47,6 +65,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+        BoundingVolume bounds() override;
     };
 
     struct Triangle : public Object
@@ -80,6 +99,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+        BoundingVolume bounds() override;
     };
 
     struct Quadrilateral : public Object
@@ -114,6 +134,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+        BoundingVolume bounds() override;
     }; 
 
     struct Cuboid : public Object
@@ -134,6 +155,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+        BoundingVolume bounds() override;
     };
 
     struct Quadric : public Object
@@ -141,7 +163,7 @@ namespace ir
     public:
         // Ax^2 + By^2 + Cz^2 + Dxy + Exz + Fyz + Gx + Hy + Iz + J = 0
         Real A, B, C, D, E, F, G, H, I, J;
-        Cuboid* bounds;
+        Cuboid* container;
 
     public:
         Quadric(Real A, Real B, Real C, Real D, Real E, Real F, Real G, Real H, Real I, Real J, const glm::vec3& origin, const glm::vec3& size, const PBRMaterial& material)
@@ -150,7 +172,7 @@ namespace ir
             // quick and dirty approximations since there don't seem to be any easy closed-form solutions
             area = size.x * size.z;
             centroid = origin + size / 2.f;
-            bounds = new Cuboid{ origin, size, material };
+            container = new Cuboid{ origin, size, material };
         }
 
     private:
@@ -165,6 +187,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+        BoundingVolume bounds() override;
     };
 
     struct Colloid : public Object
@@ -183,6 +206,7 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+        BoundingVolume bounds() override;
     };
 
     using Mesh = std::vector<Object*>;
