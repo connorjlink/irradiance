@@ -116,6 +116,49 @@ namespace ir
         glm::vec3 normal_of(const glm::vec3& position) override;
     }; 
 
+    struct Cuboid : public Object
+    {
+    public:
+        glm::vec3 origin;
+        glm::vec3 size;
+
+    public:
+        Cuboid(const glm::vec3& origin, const glm::vec3& size, const PBRMaterial& material)
+            : origin{ origin }, size{ size }, Object{ material }
+        {
+            area = 2.f * (size.x * size.y + size.y * size.z + size.z * size.x);
+            centroid = origin + size / 2.f;
+        }
+
+    public:
+        RayIntersection intersect(const Ray& ray) override;
+        glm::vec3 sample() override;
+        glm::vec3 normal_of(const glm::vec3& position) override;
+    };
+
+    struct Quadric : public Object
+    {
+    public:
+        // Ax^2 + By^2 + Cz^2 + Dxy + Exz + Fyz + Gx + Hy + Iz + J = 0
+        Real A, B, C, D, E, F, G, H, I, J;
+        glm::vec3 origin;
+        glm::vec3 size;
+
+    public:
+        Quadric(Real A, Real B, Real C, Real D, Real E, Real F, Real G, Real H, Real I, Real J, const glm::vec3& origin, const glm::vec3& size, const PBRMaterial& material)
+            : A{ A }, B{ B }, C{ C }, D{ D }, E{ E }, F{ F }, G{ G }, H{ H }, I{ I }, J{ J }, origin{ origin }, size{ size }, Object{ material }
+        {
+            // quick and dirty approximations since there don't seem to be any easy closed-form solutions
+            area = size.x * size.z;
+            centroid = origin + size / 2.f;
+        }
+
+    public:
+        RayIntersection intersect(const Ray& ray) override;
+        glm::vec3 sample() override;
+        glm::vec3 normal_of(const glm::vec3& position) override;
+    };
+
     struct Colloid : public Object
     {
     public:
@@ -149,6 +192,9 @@ namespace ir
         {
             inverse = glm::inverse(transform);
         }
+
+    public:
+        RayIntersection intersect(const Ray& ray) const;
     };
 
     Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material);

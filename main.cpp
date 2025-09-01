@@ -141,44 +141,20 @@ public:
     std::vector<MeshInstance> scene_instances;
     std::vector<Emitter> emissive_objects;
 
-private:
-    RayIntersection compute_nearest_intersection(const Ray& ray) const
+public:
+    RayIntersection compute_nearest_intersection(const Ray& ray)
     {
         auto nearest_intersection = RayIntersection{};
+
         for (const auto& instance : scene_instances)
         {
-            for (const auto object : instance.mesh)
+            #pragma message("TODO OPTIMIZE BY TRANSFORMING RAY ONE PER INSTANCE NOT PER SUB-OBJECT")
+
+            const auto intersection = instance.intersect(ray);
+
+            if (intersection.hit && intersection.depth < nearest_intersection.depth)
             {
-                if (!object)
-                {
-                    continue;
-                }
-
-                // transform ray into object's local space
-                const auto ray_transformed = Ray
-                {
-                    .origin = glm::vec3{ instance.inverse * glm::vec4{ ray.origin, 1.f } },
-                    // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-                    .direction = glm::vec3{ instance.inverse * glm::vec4{ ray.direction, 0.f } },
-                };
-
-                auto intersection = object->intersect(ray_transformed);
-                if (intersection.hit && intersection.depth < nearest_intersection.depth)
-                {
-                    // transform relevant intersection space (object local coordinates) back into world space
-
-                    intersection.position = glm::vec3{ instance.transform * glm::vec4{ intersection.position, 1.f } };
-                    // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-                    intersection.normal = glm::normalize(glm::vec3{ instance.transform * glm::vec4{ intersection.normal, 0.f } });
-
-                    // TODO: ask Shaeffer why these are not required (produce shadow artifacts)
-                    // const auto entry_position = intersection.position;
-                    // const auto exit_position = intersection.position + ray_transformed.direction * (intersection.exit - intersection.depth);
-                    // intersection.depth = glm::length(glm::vec3{ instance.transform * glm::vec4{ entry_position, 1.f } } - ray.origin);
-                    // intersection.exit = glm::length(glm::vec3{ instance.transform * glm::vec4{ exit_position, 1.f } } - ray.origin);
-
-                    nearest_intersection = intersection;
-                }
+                nearest_intersection = intersection;
             }
         }
 
@@ -238,7 +214,6 @@ private:
 
         // TODO: bounding volume hierarchy acceleration structure
 
-        // sort to find the nearest intersection for correct geometry rendering
         const auto nearest_intersection = compute_nearest_intersection(ray);
 
         if (nearest_intersection.hit)
@@ -434,22 +409,23 @@ public:
 
         scene_instances.emplace_back(MeshInstance{ glm::identity<glm::mat4>(), sphere });
 
-        static const auto mesh = cube(PBRMaterial
+        static const auto prism = cube(PBRMaterial
         {
-            .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+            .albedo = glm::vec3{ .2f, .4f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
             .metallicity = 0.f,
-            .refraction_index = -.99f,
+            .refraction_index = -.5f,
             .anisotropy = 0.f,
             .roughness = 0.f,
-            .transmission = 1.f,
+            .transmission = .9f,
         });
-        static const auto mesh_instance = MeshInstance
+        static const auto prism_instance = MeshInstance
         {
-            glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, 0.f, -.5f }),
-            mesh
+            glm::translate(glm::rotate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::radians(25.f), UP), glm::vec3{ -.5f, -.5f, -.5f }),
+            prism
         };
-        scene_instances.emplace_back(mesh_instance);
+
+        scene_instances.emplace_back(prism_instance);
 
         for (auto& instance : scene_instances)
         {

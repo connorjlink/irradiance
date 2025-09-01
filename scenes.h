@@ -140,6 +140,36 @@ namespace ir
                     .transmission = 1.f,
                 }
             },
+            new Cuboid
+            {
+                glm::vec3{ -.5f, -4.5f, -.5f },
+                glm::vec3{ .01f, 1.5f, 1.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .7f, 1.f, .8f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .refraction_index = .85f,
+                    .anisotropy = 0.f,
+                    .roughness = .01f,
+                    .transmission = .91f,
+                }
+            },
+            new Cuboid
+            {
+                glm::vec3{ -.5f, -6.5f, -.5f },
+                glm::vec3{ 1.f, 1.f, 1.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .5f, 1.f, .6f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .refraction_index = .67f,
+                    .anisotropy = 0.f,
+                    .roughness = .02f,
+                    .transmission = .91f,
+                }
+            },
             new Sphere
             {
                 glm::vec3{ -8.f, -4.f, 4.f },
@@ -343,9 +373,9 @@ namespace ir
         {
             new Quadrilateral
             {
-                glm::vec3{ 1.f, -1.f, 1.f },
-                glm::vec3{ 1.f, 1.f, 1.f },
                 glm::vec3{ -1.f, 1.f, 1.f },
+                glm::vec3{ 1.f, 1.f, 1.f },
+                glm::vec3{ 1.f, -1.f, 1.f },
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .75f, .25f, .25f },

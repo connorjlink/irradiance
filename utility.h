@@ -61,7 +61,7 @@ namespace ir
         glm::vec3 normal;
         PBRMaterial material;
         Real depth = std::numeric_limits<float>::infinity();
-        Real exit = std::numeric_limits<float>::infinity();
+        Real exit = 0.f;
         bool hit;
         Object* object = nullptr;
         glm::vec2 uv;

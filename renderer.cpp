@@ -208,6 +208,112 @@ namespace ir
         return normal;
     }
 
+    RayIntersection Cuboid::intersect(const Ray& ray)
+    {
+        // slab method https://en.wikipedia.org/wiki/Slab_method
+        // modified into 3-D from https://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection.html
+
+        const auto minimum = origin;
+        const auto maximum = origin + size;
+
+        const auto reciprocal = 1.f / ray.direction;
+
+        const auto f1 = (minimum.x - ray.origin.x) * reciprocal.x;
+        const auto f2 = (maximum.x - ray.origin.x) * reciprocal.x;
+        const auto f3 = (minimum.y - ray.origin.y) * reciprocal.y;
+        const auto f4 = (maximum.y - ray.origin.y) * reciprocal.y;
+        const auto f5 = (minimum.z - ray.origin.z) * reciprocal.z;
+        const auto f6 = (maximum.z - ray.origin.z) * reciprocal.z;
+
+        const auto tmin = glm::max(glm::max(glm::min(f1, f2), glm::min(f3, f4)), glm::min(f5, f6));
+        const auto tmax = glm::min(glm::min(glm::max(f1, f2), glm::max(f3, f4)), glm::max(f5, f6));
+
+        if (tmax < 0.f || tmin > tmax)
+        {
+            return MISS;
+        }
+
+        const auto t1 = tmin >= 0.f ? tmin : tmax;
+        const auto t2 = tmin < 0.f ? tmax : tmin;
+        if (t1 <= .001f)
+        {
+            return MISS;
+        }
+
+        auto intersection = ray.origin + ray.direction * t1;
+        auto normal = normal_of(intersection);
+        if (glm::dot(normal, ray.direction) > 0.f)
+        {
+            normal = -normal;
+        }
+
+        intersection += normal * .001f;
+
+        return 
+        {
+            .position = intersection,
+            .normal = normal,
+            .material = material,
+            .depth = t1,
+            .exit = t2,
+            .hit = true,
+            .object = this,
+            .uv = { 0.f, 0.f },
+        };
+    }
+
+    glm::vec3 Cuboid::sample()
+    {
+        // choose a 2-D point from a random face
+        const auto face = glm::linearRand(0, 6);
+        const auto u = glm::linearRand(0.f, 1.f);
+        const auto v = glm::linearRand(0.f, 1.f);
+
+        switch (face)
+        {
+            case 0: return origin + glm::vec3{        0.f, u * size.y, v * size.z };
+            case 1: return origin + glm::vec3{     size.x, u * size.y, v * size.z };
+            case 2: return origin + glm::vec3{ u * size.x,        0.f, v * size.z };
+            case 3: return origin + glm::vec3{ u * size.x,     size.y, v * size.z };
+            case 4: return origin + glm::vec3{ u * size.x, v * size.y,        0.f };
+            case 5: return origin + glm::vec3{ u * size.x, v * size.y,     size.z };
+        }
+
+        return origin;
+    }
+
+    glm::vec3 Cuboid::normal_of(const glm::vec3& position)
+    {
+        // compute unit-vector normals depending upon the face (since it is axis-aligned)
+
+        if (glm::abs(position.x - origin.x) < .001f)
+        {
+            return glm::vec3{ -1.f, 0.f, 0.f };
+        }
+        else if (glm::abs(position.x - (origin.x + size.x)) < .001f)
+        {
+            return glm::vec3{ 1.f, 0.f, 0.f };
+        }
+        else if (glm::abs(position.y - origin.y) < .001f)
+        {
+            return glm::vec3{ 0.f, -1.f, 0.f };
+        }
+        else if (glm::abs(position.y - (origin.y + size.y)) < .001f)
+        {
+            return glm::vec3{ 0.f, 1.f, 0.f };
+        }
+        else if (glm::abs(position.z - origin.z) < .001f)
+        {
+            return glm::vec3{ 0.f, 0.f, -1.f };
+        }
+        else if (glm::abs(position.z - (origin.z + size.z)) < .001f)
+        {
+            return glm::vec3{ 0.f, 0.f, 1.f };
+        }  
+
+        return glm::vec3{ 0.f };
+    }
+
     RayIntersection Colloid::intersect(const Ray& ray)
     {
         const auto intersection = container->intersect(ray);
@@ -260,6 +366,61 @@ namespace ir
     glm::vec3 Colloid::normal_of(const glm::vec3& position)
     {
         return glm::sphericalRand(1.f);
+    }
+
+    RayIntersection MeshInstance::intersect(const Ray& ray) const
+    {
+        auto nearest_intersection = RayIntersection{}, furthest_intersection = RayIntersection{};
+
+        auto is_composite_mesh = false;
+
+        for (const auto& object : mesh)
+        {
+            if (!object)
+            {
+                continue;
+            }
+
+            // transform ray into object's local space
+            const auto ray_transformed = Ray
+            {
+                .origin = glm::vec3{ inverse * glm::vec4{ ray.origin, 1.f } },
+                // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
+                .direction = glm::vec3{ inverse * glm::vec4{ ray.direction, 0.f } },
+            };
+
+            auto intersection = object->intersect(ray_transformed);
+            if (intersection.hit)
+            {
+                // transform relevant intersection space (object local coordinates) back into world space
+
+                intersection.position = glm::vec3{ transform * glm::vec4{ intersection.position, 1.f } };
+                // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
+                intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ intersection.normal, 0.f } });
+
+                // TODO: ask Shaeffer why these are not required (produce shadow artifacts)
+                // const auto entry_position = intersection.position;
+                // const auto exit_position = intersection.position + ray_transformed.direction * (intersection.exit - intersection.depth);
+                // intersection.depth = glm::length(glm::vec3{ instance.transform * glm::vec4{ entry_position, 1.f } } - ray.origin);
+                // intersection.exit = glm::length(glm::vec3{ instance.transform * glm::vec4{ exit_position, 1.f } } - ray.origin);
+
+                if (intersection.depth < nearest_intersection.depth)
+                {
+                    nearest_intersection = intersection;
+                }
+                else if (intersection.exit > furthest_intersection.exit)
+                {
+                    furthest_intersection = intersection;
+                }
+            }
+        }
+
+        if (nearest_intersection.hit && furthest_intersection.hit && nearest_intersection.exit == std::numeric_limits<float>::infinity())
+        {
+            nearest_intersection.exit = furthest_intersection.exit;
+        }
+
+        return nearest_intersection;
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
