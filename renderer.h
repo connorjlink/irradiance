@@ -217,16 +217,30 @@ namespace ir
         glm::mat4 transform;
         glm::mat4 inverse;
         const Mesh& mesh;
+        BoundingVolume volume;
 
     public:
         MeshInstance(const glm::mat4& transform, const Mesh& mesh)
-            : transform{ transform }, mesh{ mesh }
+            : transform{ transform }, mesh{ mesh }, volume{ glm::vec3{ std::numeric_limits<Real>::max() }, glm::vec3{ std::numeric_limits<Real>::min() } }
         {
             inverse = glm::inverse(transform);
+
+            for (const auto& object : mesh)
+            {
+                if (!object)
+                {
+                    continue;
+                }
+
+                const auto bounds = object->bounds();
+                volume.origin = glm::min(volume.origin, glm::vec3{ transform * glm::vec4{ bounds.origin, 1.f } });
+                volume.size = glm::max(volume.size, glm::vec3{ transform * glm::vec4{ bounds.origin + bounds.size, 1.f } });
+            }
         }
 
     public:
         RayIntersection intersect(const Ray& ray) const;
+        BoundingVolume bounds() const;
     };
 
     Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material);
