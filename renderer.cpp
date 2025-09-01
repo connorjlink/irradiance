@@ -228,7 +228,7 @@ namespace ir
         const auto u = glm::linearRand(0.f, 1.f);
         const auto v = glm::linearRand(0.f, 1.f);
 
-        return v0 + u * v1 + v * v2;
+        return v0 - u * v1 - v * v2;
     }
 
     glm::vec3 Quadrilateral::normal_of(const glm::vec3& position)

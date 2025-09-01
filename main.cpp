@@ -205,6 +205,11 @@ public:
         return { u, v };
     }
 
+    Real compute_emissivity(const Emitter& emitter)
+    {
+        return emitter.object->area * glm::length(emitter.object->material.emission);
+    };
+
     glm::vec3 trace(Ray& ray, int bounces)
     {
         if (bounces <= 0)
@@ -275,6 +280,8 @@ public:
 
             const auto random = glm::linearRand(0.f, 1.f);
 
+            auto path = glm::vec3{ 0.f };
+
             if (random < metal_weight)
             {
                 // metallic reflection
@@ -284,7 +291,7 @@ public:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                return albedo * trace(ray, bounces - 1) / metal_weight;
+                path = albedo * trace(ray, bounces - 1) / metal_weight;
             }
             else if (random < metal_weight + reflection_weight)
             {
@@ -295,7 +302,7 @@ public:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                return mat.transmission * trace(ray, bounces - 1) / reflection_weight;
+                path = mat.transmission * trace(ray, bounces - 1) / reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
             {
@@ -315,7 +322,7 @@ public:
                 const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
                 const auto attenuation = glm::exp(-mat.albedo * attenuation_distance);
 
-                return attenuation * trace(ray, bounces - 1) / refraction_weight;
+                path = attenuation * trace(ray, bounces - 1) / refraction_weight;
             }
             else
             {
@@ -346,8 +353,57 @@ public:
 
                 const auto lambertian = albedo / glm::pi<Real>();
                 
-                return lambertian * trace(ray, bounces - 1) / diffuse_weight;
+                path = lambertian * trace(ray, bounces - 1) / diffuse_weight;
             }
+
+            auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f };
+
+            for (const auto& emitter : emissive_objects)
+            {
+                if (glm::linearRand(0.f, 1.f) < emitter.probability)
+                {
+                    sampled_emitter = emitter;
+                    break;
+                }
+            }
+
+            auto direct = glm::vec3{ 0.f };
+
+            if (sampled_emitter.object)
+            {
+                const auto light_sample = sampled_emitter.object->sample();
+                const auto light_normal = sampled_emitter.object->normal_of(light_sample);
+                const auto light_direction = glm::normalize(light_sample - ray.origin);
+
+                const auto light_ray = Ray
+                {
+                    .origin = ray.origin + normal * .001f,
+                    .direction = light_direction,
+                };
+
+                // next-event estimation direct light sampling per bounce
+                // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
+                const auto light_intersection = compute_nearest_intersection(light_ray);
+
+                if (light_intersection.hit && light_intersection.object == sampled_emitter.object)
+                {
+                    const auto light_angle = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
+                    const auto normal_angle = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
+
+                    const auto radiance = sampled_emitter.object->material.emission;
+                    const auto distance2 = glm::distance2(light_sample, ray.origin);
+                    // IMPORTANT: INVERSE SQUARE LAW!!
+                    const auto geometry = light_angle * normal_angle / distance2;
+                    const auto probability = 1.f / sampled_emitter.object->area;
+
+                    const auto lambertian = albedo / glm::pi<Real>();
+
+                    direct = lambertian * radiance * geometry / (probability * sampled_emitter.probability);
+                }
+            }
+
+            #pragma message ("TODO: APPROPRIATE PDF MIXING PER https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/gettingthepdfofalight")
+            return path + direct;
         }
         else
         {
@@ -444,16 +500,11 @@ public:
             }
         }
 
-        auto emissivity = [](auto emitter)
-        {
-            return emitter.object->area * glm::length(emitter.object->material.emission);
-        };
-
         for (auto& emitter : emissive_objects)
         {
             // pre-compute the probability of sampling each emitter weighted by emissivity as part of importance sampling
-            emitter.probability = emissivity(emitter) / std::accumulate(emissive_objects.begin(), emissive_objects.end(), 0.f, 
-                [&](auto sum, auto emitter) { return sum + emissivity(emitter); });
+            emitter.probability = compute_emissivity(emitter) / std::accumulate(emissive_objects.begin(), emissive_objects.end(), 0.f, 
+                [&](auto sum, auto emitter) { return sum + compute_emissivity(emitter); });
         }
 
 		return true;

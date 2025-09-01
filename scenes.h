@@ -508,13 +508,13 @@ namespace ir
             // light source (emissive white)
             new Quadrilateral
             {
-                glm::vec3{ .75f, -.99f, .75f },
-                glm::vec3{ -.75f, -.99f, .75f },
-                glm::vec3{ .75f, -.99f, -.75f },
+                glm::vec3{ .25f, -.99f, .25f },
+                glm::vec3{ -.25f, -.99f, .25f },
+                glm::vec3{ .25f, -.99f, -.25f },
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .emission = glm::vec3{ 4e1f },
+                    .emission = glm::vec3{ 2e1f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
