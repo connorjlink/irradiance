@@ -210,7 +210,7 @@ public:
         return emitter.object->area * glm::length(emitter.object->material.emission);
     };
 
-    glm::vec3 trace(Ray& ray, int bounces)
+    glm::vec3 trace(Ray& ray, int bounces, RayIntersection& output_intersection)
     {
         if (bounces <= 0)
         {
@@ -220,6 +220,7 @@ public:
         // TODO: bounding volume hierarchy acceleration structure
 
         const auto nearest_intersection = compute_nearest_intersection(ray);
+        output_intersection = nearest_intersection;
 
         if (nearest_intersection.hit)
         {
@@ -280,7 +281,8 @@ public:
 
             const auto random = glm::linearRand(0.f, 1.f);
 
-            auto path = glm::vec3{ 0.f };
+            auto absorption = glm::vec3{ 1.f };
+            auto weight = 1.f;
 
             if (random < metal_weight)
             {
@@ -291,7 +293,8 @@ public:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                path = albedo * trace(ray, bounces - 1) / metal_weight;
+                absorption = albedo;
+                weight = metal_weight;
             }
             else if (random < metal_weight + reflection_weight)
             {
@@ -302,7 +305,8 @@ public:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                path = mat.transmission * trace(ray, bounces - 1) / reflection_weight;
+                absorption = glm::vec3{ mat.transmission };
+                weight = reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
             {
@@ -322,14 +326,15 @@ public:
                 const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
                 const auto attenuation = glm::exp(-mat.albedo * attenuation_distance);
 
-                path = attenuation * trace(ray, bounces - 1) / refraction_weight;
+                absorption = attenuation;
+                weight = refraction_weight;
             }
             else
             {
                 // diffuse scattering
 
                 // cosine-weighted hemisphere random sampling per lambertian BRDF
-                // heavily modified from the cosine distribution method plus re-basis
+                // heavily modified from the cosine distribution method plus re-basis using orthonormal space
                 // https://www.rorydriscoll.com/2009/01/07/better-sampling/
 
                 const auto disk = glm::diskRand(1.f);
@@ -352,58 +357,78 @@ public:
                 ray.direction = glm::normalize(world_coordinates);
 
                 const auto lambertian = albedo / glm::pi<Real>();
-                
-                path = lambertian * trace(ray, bounces - 1) / diffuse_weight;
+
+                absorption = lambertian;
+                weight = diffuse_weight;
             }
 
-            auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f };
+            auto path = glm::vec3{ 0.f };
 
-            for (const auto& emitter : emissive_objects)
+            #define ENABLE_DLS
+            #ifdef ENABLE_DLS
+
+            const auto probability = .5f;
+
+            // DIRECT LIGHT SAMPLING PATH TERMINATION
+            if (random < probability)
             {
-                if (glm::linearRand(0.f, 1.f) < emitter.probability)
+                auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f };
+                for (const auto& emitter : emissive_objects)
                 {
-                    sampled_emitter = emitter;
-                    break;
+                    if (glm::linearRand(0.f, 1.f) < emitter.probability)
+                    {
+                        sampled_emitter = emitter;
+                        break;
+                    }
                 }
-            }
 
-            auto direct = glm::vec3{ 0.f };
-
-            if (sampled_emitter.object)
-            {
+                // direct light importance sampling https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/
                 const auto light_sample = sampled_emitter.object->sample();
                 const auto light_normal = sampled_emitter.object->normal_of(light_sample);
-                const auto light_direction = glm::normalize(light_sample - ray.origin);
 
-                const auto light_ray = Ray
+                auto light_direction = light_sample - ray.origin;
+                const auto distance2 = glm::length2(light_direction);
+                light_direction = glm::normalize(light_direction);
+
+                const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
+
+                const auto light_area = sampled_emitter.object->area;
+                const auto light_cosine = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
+
+                if (sampled_emitter.object)
                 {
-                    .origin = ray.origin + normal * .001f,
-                    .direction = light_direction,
-                };
+                    // next-event estimation direct light sampling per bounce
+                    // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
+                    auto light_ray = Ray
+                    {
+                        .origin = ray.origin + normal * .001f,
+                        .direction = light_direction,
+                    };
 
-                // next-event estimation direct light sampling per bounce
-                // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
-                const auto light_intersection = compute_nearest_intersection(light_ray);
-
-                if (light_intersection.hit && light_intersection.object == sampled_emitter.object)
-                {
-                    const auto light_angle = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-                    const auto normal_angle = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
-
+                    const auto geometry = (normal_cosine * light_cosine) / distance2;
                     const auto radiance = sampled_emitter.object->material.emission;
-                    const auto distance2 = glm::distance2(light_sample, ray.origin);
-                    // IMPORTANT: INVERSE SQUARE LAW!!
-                    const auto geometry = light_angle * normal_angle / distance2;
-                    const auto probability = 1.f / sampled_emitter.object->area;
 
-                    const auto lambertian = albedo / glm::pi<Real>();
+                    const auto pdf = distance2 / (light_cosine * light_area);
 
-                    direct = lambertian * radiance * geometry / (probability * sampled_emitter.probability);
+                    auto intersection = RayIntersection{};
+                    const auto scatter = trace(light_ray, bounces - 1, intersection);
+
+                    if (intersection.hit && intersection.object == sampled_emitter.object)
+                    {
+                        path = absorption * scatter * radiance * geometry / weight;
+                    }
                 }
+                
+            }
+            
+            // STANDARD PATH TERMINATION
+            else if (path == glm::vec3{ 0.f })
+            #endif
+            {
+                path = absorption * trace(ray, bounces - 1, output_intersection) / weight;
             }
 
-            #pragma message ("TODO: APPROPRIATE PDF MIXING PER https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/gettingthepdfofalight")
-            return path + direct;
+            return path;
         }
         else
         {
@@ -476,7 +501,7 @@ public:
         });
         static const auto prism_instance = MeshInstance
         {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ 0.f, 0.f, -.5f }), glm::radians(45.f), UP),
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, 2.f, .5f }), glm::radians(45.f), UP),
             prism
         };
 
@@ -663,11 +688,11 @@ public:
                     ray_jittered.direction = glm::normalize(focal_point - ray_jittered.origin);
                 }
 
-                total_color += trace(ray_jittered, _bounces);
+                auto intersection = RayIntersection{};
+                total_color += trace(ray_jittered, _bounces, intersection);
             }
 
-            // smart NaN check per https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#playingwithimportancesampling
-            if (total_color != total_color) 
+            if (glm::any(glm::isinf(total_color)) || glm::any(glm::isnan(total_color))) 
             {
                 total_color = glm::vec3{ 0.f };
             } 

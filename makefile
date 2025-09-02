@@ -14,11 +14,11 @@ run:
 
 release:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
-	./irradiance -width=300 -height=300 -bounces=5 -samples=1
+	./irradiance -width=300 -height=300 -bounces=5 -samples=3
 
 cornell:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL
-	./irradiance -width=300 -height=300 -bounces=5 -samples=5
+	./irradiance -width=300 -height=300 -bounces=5 -samples=1
 
 clean:
 	rm -f irradiance
