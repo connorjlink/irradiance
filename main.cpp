@@ -39,6 +39,9 @@ static constexpr Real SAMPLE_JITTER = .001f;
 
 static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
+static constexpr Real BASE_ISO = 100.f;
+static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
+
 static constexpr int FRAME_HISTORY = 5;
 
 #ifndef CORNELL
@@ -124,6 +127,8 @@ private:
     bool enable_dof = false;
     Real focal_distance = std::numeric_limits<Real>::infinity();
     Real aperture_radius = .1f;
+    Real ISO = BASE_ISO;
+    Real shutter_speed = 1 / 60.f;
 
     glm::vec3* frame_buffer = nullptr;
     glm::vec3* staging_buffer = nullptr;
@@ -258,7 +263,7 @@ public:
         const auto angle2 = angle * angle;
 
         const auto denominator = (angle2 * (roughness4 - 1.f) + 1.f);
-        return roughness4 / (glm::pi<Real>() * denominator * denominator) + .001f;
+        return roughness4 / (glm::pi<Real>() * denominator * denominator + .001f);
     }
 
     glm::vec3 compute_fresnel_F(const glm::vec3& F0, Real cosine)
@@ -358,6 +363,8 @@ public:
 
             const auto reflection = glm::reflect(ray.direction, normal);
 
+            auto dls_probability = .5f;
+
             auto shade_ggx = [&]()
             {
                 const auto roughness = glm::max(.001f, mat.roughness);
@@ -396,7 +403,9 @@ public:
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
-                
+
+                dls_probability = 0.f;
+
                 absorption = glm::vec3{ mat.transmission };
                 weight = reflection_weight;
             }
@@ -417,6 +426,8 @@ public:
                 // Beer-Lambert attenuation (re-using albedo as absorption)
                 const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
                 const auto attenuation = glm::exp(-mat.albedo * attenuation_distance);
+
+                dls_probability = 0.f;
 
                 absorption = attenuation;
                 weight = refraction_weight;
@@ -456,39 +467,41 @@ public:
 
             auto path = glm::vec3{ 0.f };
 
-            //#define ENABLE_DLS
+            #define ENABLE_DLS
             #ifdef ENABLE_DLS
 
-            const auto probability = .5f;
 
             // DIRECT LIGHT SAMPLING PATH TERMINATION
-            if (random < probability)
+            if (random < dls_probability)
             {
-                auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f };
+                auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f }; 
+                const auto emitter_random = glm::linearRand(0.f, 1.f);
+                auto emitter_cdf = 0.f;
                 for (const auto& emitter : emissive_objects)
                 {
-                    if (glm::linearRand(0.f, 1.f) < emitter.probability)
+                    emitter_cdf += emitter.probability;
+                    if (emitter_random <= emitter_cdf)
                     {
                         sampled_emitter = emitter;
                         break;
                     }
                 }
 
-                // direct light importance sampling https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/
-                const auto light_sample = sampled_emitter.object->sample();
-                const auto light_normal = sampled_emitter.object->normal_of(light_sample);
-
-                auto light_direction = light_sample - ray.origin;
-                const auto distance2 = glm::length2(light_direction);
-                light_direction = glm::normalize(light_direction);
-
-                const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-
-                const auto light_area = sampled_emitter.object->area;
-                const auto light_cosine = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
-
                 if (sampled_emitter.object)
                 {
+                    // direct light importance sampling https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/
+                    const auto light_sample = sampled_emitter.object->sample();
+                    const auto light_normal = sampled_emitter.object->normal_of(light_sample);
+
+                    auto light_direction = light_sample - ray.origin;
+                    const auto distance2 = glm::length2(light_direction);
+                    light_direction = glm::normalize(light_direction);
+
+                    const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
+
+                    const auto light_area = sampled_emitter.object->area;
+                    const auto light_cosine = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
+
                     // next-event estimation direct light sampling per bounce
                     // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
                     auto light_ray = Ray
@@ -497,20 +510,19 @@ public:
                         .direction = light_direction,
                     };
 
-                    const auto geometry = (normal_cosine * light_cosine) / distance2;
+                    const auto geometry = (normal_cosine * light_cosine) / (distance2 + .001f);
                     const auto radiance = sampled_emitter.object->material.emission;
 
-                    const auto pdf = distance2 / (light_cosine * light_area);
+                    const auto pdf = distance2 / (light_cosine * light_area + .001f);
 
                     auto intersection = RayIntersection{};
                     const auto scatter = trace(light_ray, bounces - 1, intersection);
 
                     if (intersection.hit && intersection.object == sampled_emitter.object)
                     {
-                        path = absorption * scatter * radiance * geometry / weight;
+                        path = absorption * scatter * radiance * geometry / (weight * pdf + .001f);
                     }
                 }
-                
             }
             
             // STANDARD PATH TERMINATION
@@ -570,11 +582,11 @@ public:
                 {
                     .albedo = glm::vec3{ .2f, .4f, .9f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
+                    .metallicity = .75f,
                     .refraction_index = .99f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
-                    .transmission = .1f,
+                    .transmission = .02f,
                 }
             }
         };
@@ -583,10 +595,10 @@ public:
 
         static const auto prism = cube(PBRMaterial
         {
-            .albedo = glm::vec3{ .2f, .4f, .9f },
+            .albedo = glm::vec3{ .9f, .9f, .1f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
-            .refraction_index = 4.f,
+            .metallicity = .1f,
+            .refraction_index = 2.f,
             .anisotropy = 0.f,
             .roughness = .01f,
             .transmission = .97f,
@@ -634,7 +646,8 @@ public:
         DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", enable_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
         DrawStringPropDecal({ 5.f, 55.f }, std::format("Aperture Size: {:.2f}", aperture_radius), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 65.f }, std::format("FOV: {:.2f}", fov_degrees), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 65.f }, std::format("ISO: {:.2f} Shutter Speed: {:.2f}", ISO, shutter_speed), olc::YELLOW);
+        DrawStringPropDecal({ 5.f, 75.f }, std::format("FOV: {:.2f}", fov_degrees), olc::YELLOW);
 
         const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
         DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
@@ -744,6 +757,18 @@ public:
             aperture_radius = glm::max(aperture_radius, .001f);
             dirty = true;
         }
+        if (GetKey(olc::Key::HOME).bPressed || GetKey(olc::Key::RIGHT).bPressed)
+        {
+            ISO *= 2.f;
+            ISO = glm::clamp(ISO, BASE_ISO, MAX_ISO_MULTIPLIER * BASE_ISO);
+            dirty = true;
+        }
+        if (GetKey(olc::Key::END).bPressed || GetKey(olc::Key::LEFT).bPressed)
+        {
+            ISO /= 2.f;
+            ISO = glm::clamp(ISO, BASE_ISO, MAX_ISO_MULTIPLIER * BASE_ISO);
+            dirty = true;
+        }
 
         if (GetKey(olc::Key::PGUP).bPressed || GetKey(olc::Key::X).bPressed)
         {
@@ -759,6 +784,16 @@ public:
         }
 
         // PARALLELIZE
+        
+        auto tonemap = [&](const glm::vec3& color)
+        {
+            // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
+            const auto tone_mapped = color / (color + glm::vec3{ 1.f });
+            // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
+            const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
+
+            return gamma_corrected;
+        };
 
         std::for_each(std::execution::par, index_buffer.begin(), index_buffer.end(), [&](int i)
         {
@@ -797,13 +832,11 @@ public:
 
             total_color /= static_cast<Real>(_samples);
 
-            // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
-            const auto tone_mapped = total_color / (total_color + glm::vec3{ 1.f });
-            // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
-            const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
+            // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
+            const auto iso_corrected = total_color * (ISO / BASE_ISO);
 
-            staging_buffer[i] = gamma_corrected;
-            frame_buffer[i] += gamma_corrected;
+            staging_buffer[i] = iso_corrected;
+            frame_buffer[i] += iso_corrected;
         });
 
         if (!dirty && last_dirty)
@@ -858,7 +891,8 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto color = compute_average(x + y * ScreenWidth());
-                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
+                    const auto tonemapped = tonemap(color);
+                    Draw(x, y, olc::Pixel(tonemapped.r * 255.f, tonemapped.g * 255.f, tonemapped.b * 255.f));
                 }
             }
         }
@@ -869,7 +903,8 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
-                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
+                    const auto tonemapped = tonemap(color);
+                    Draw(x, y, olc::Pixel(tonemapped.r * 255.f, tonemapped.g * 255.f, tonemapped.b * 255.f));
                 }
             }
         }
@@ -963,7 +998,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }

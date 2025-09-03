@@ -1,7 +1,7 @@
 LIBS = -framework OpenGL -framework GLUT -framework Carbon
 #INCLUDES = -I $(HOME)/vcpkg/installed/arm64-osx/include
 INCLUDES = 
-EXTRAS = -std=c++23 -fexperimental-library -march=native -mtune=native -D _LIBCPP_ENABLE_EXPERIMENTAL -D GLM_ENABLE_EXPERIMENTAL -D GLM_FORCE_NEON -Wno-explicit-specialization-storage-class -Wno-macro-redefined
+EXTRAS = -std=c++23 -fexperimental-library -march=native -mtune=native -D _LIBCPP_ENABLE_EXPERIMENTAL -D GLM_ENABLE_EXPERIMENTAL -D GLM_FORCE_NEON -Wno-explicit-specialization-storage-class -Wno-macro-redefined -Wno-deprecated-declarations
 # -stdlib=libc++ 
 
 build:
@@ -14,7 +14,7 @@ run:
 
 release:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
-	./irradiance -width=300 -height=300 -bounces=4 -samples=1
+	./irradiance -width=300 -height=300 -bounces=5 -samples=1
 
 cornell:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL
