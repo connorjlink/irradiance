@@ -51,7 +51,7 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .5f, .5f, .5f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 1.f,
+                    .metallicity = .9f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
                 }
@@ -187,7 +187,7 @@ namespace ir
             },
             new Colloid
             {
-                .5f,
+                1.f,
                 new Cuboid
                 {
                     glm::vec3{ -3.5f, -6.5f, -.5f },
@@ -226,7 +226,7 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .25f, .75, .4f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 1.f,
+                    .metallicity = .5f,
                     .refraction_index = 1.67f,
                     .anisotropy = 0.f,
                     .roughness = .1f,
@@ -257,7 +257,7 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .1f, 1.f, .1f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 1.f,
+                    .metallicity = .9f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
                 }

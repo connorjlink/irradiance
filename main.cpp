@@ -1,10 +1,12 @@
 // to silence intellisense errors
 #define _LIBCPP_ENABLE_EXPERIMENTAL
 
-#define STBI_NEON
 #define OLC_PGE_APPLICATION
 #define OLC_IMAGE_STB
 #include "olcPixelGameEngine.h"
+#define STBI_NEON
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include <charconv>
 #include <string>
@@ -142,6 +144,44 @@ public:
     std::vector<Emitter> emissive_objects;
 
 public:
+    std::string capture_screenshot()
+    {
+        const auto now = std::chrono::system_clock::now();
+        const auto filepath = std::to_string(std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count()) + ".png";
+
+        struct RGB
+        {
+            std::uint8_t R, G, B;
+        };
+
+        auto rgb = new RGB[ScreenWidth() * ScreenHeight()];
+
+        for (auto x = 0; x < ScreenHeight(); x++)
+        {
+            for (auto y = 0; y < ScreenWidth(); y++)
+            {
+                const auto index = x + y * ScreenWidth();
+
+                const auto original = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+
+                const auto color = RGB
+                { 
+                    static_cast<std::uint8_t>(255.f * original.r), 
+                    static_cast<std::uint8_t>(255.f * original.g), 
+                    static_cast<std::uint8_t>(255.f * original.b)
+                };
+
+                rgb[index] = color;
+            }
+        }
+        
+        stbi_write_png(filepath.c_str(), ScreenWidth(), ScreenHeight(), 3, rgb, ScreenWidth() * sizeof(RGB));
+        
+        delete[] rgb;
+
+        return filepath;
+    }
+
     RayIntersection compute_nearest_intersection(const Ray& ray)
     {
         auto nearest_intersection = RayIntersection{};
@@ -210,6 +250,38 @@ public:
         return emitter.object->area * glm::length(emitter.object->material.emission);
     };
 
+    Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
+    {
+        const auto roughness4 = roughness * roughness * roughness * roughness;
+
+        const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
+        const auto angle2 = angle * angle;
+
+        const auto denominator = (angle2 * (roughness4 - 1.f) + 1.f);
+        return roughness4 / (glm::pi<Real>() * denominator * denominator) + .001f;
+    }
+
+    glm::vec3 compute_fresnel_F(const glm::vec3& F0, Real cosine)
+    {
+        // Schlick approximation
+        return F0 + (1.f - F0) * glm::pow(1.f - cosine, 5.f);
+    }
+
+    Real compute_smith_G(const glm::vec3& light, const glm::vec3& view, const glm::vec3& normal, Real roughness)
+    {
+        //  https://schuttejoe.github.io/post/ggximportancesamplingpart2/
+
+        const auto light_angle = glm::max(glm::dot(normal, light), 0.f);
+        const auto view_angle = glm::max(glm::dot(normal, view), 0.f);
+
+        const auto k = (roughness + 1.f) * (roughness + 1.f) / 8.f;
+
+        const auto G1_light = light_angle / (light_angle * (1.f - k) + k + .001f);
+        const auto G1_view = view_angle / (view_angle * (1.f - k) + k + .001f);
+
+        return G1_light * G1_view;
+    }
+
     glm::vec3 trace(Ray& ray, int bounces, RayIntersection& output_intersection)
     {
         if (bounces <= 0)
@@ -265,10 +337,10 @@ public:
             
             // Fresnel term with Schlick's approximation
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, mat.metallicity);
-            const auto F = F0 + (glm::vec3{ 1.f } - F0) * glm::pow(normal_angle, 5.f); 
+            const auto F = compute_fresnel_F(F0, 1.f - normal_angle);
 
             const auto metal_probability = mat.metallicity;
-            const auto reflection_probability = (1.0f - mat.metallicity) * glm::compMax(F) + mat.metallicity;
+            const auto reflection_probability = (1.f - mat.metallicity) * glm::compMax(F) + mat.metallicity;
             const auto refraction_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * mat.transmission;
             const auto diffuse_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * (1.f - mat.transmission);
 
@@ -284,22 +356,42 @@ public:
             auto absorption = glm::vec3{ 1.f };
             auto weight = 1.f;
 
+            const auto reflection = glm::reflect(ray.direction, normal);
+
+            auto shade_ggx = [&]()
+            {
+                const auto roughness = glm::max(.001f, mat.roughness);
+
+                const auto V = -ray.direction;
+                const auto R = reflection; 
+                const auto H = glm::normalize(R + V);
+
+                const auto D = compute_GGX_D(H, normal, roughness);
+                const auto F = compute_fresnel_F(F0, glm::max(0.f, glm::dot(H, V)));
+                const auto G = compute_smith_G(R, V, normal, roughness);
+
+                const auto reflection_angle = glm::max(0.f, glm::dot(normal, R));
+                const auto view_angle = glm::max(0.f, glm::dot(normal, V));
+
+                // IMPORTANT: MUST ADD SMALL EPSILON TO AVOID DIVIDE BY ZERO CRASH!!!
+                return (D * G * F) / (4.f * reflection_angle * view_angle + .001f);
+            };
+
             if (random < metal_weight)
             {
                 // metallic reflection
-                const auto reflection = glm::reflect(ray.direction, normal);
+                const auto specular = shade_ggx();
                 
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
-                absorption = albedo;
+                absorption = specular * albedo;
                 weight = metal_weight;
             }
             else if (random < metal_weight + reflection_weight)
             {
                 // dielectric reflection
-                const auto reflection = glm::reflect(ray.direction, normal);
                 
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
@@ -364,7 +456,7 @@ public:
 
             auto path = glm::vec3{ 0.f };
 
-            #define ENABLE_DLS
+            //#define ENABLE_DLS
             #ifdef ENABLE_DLS
 
             const auto probability = .5f;
@@ -546,6 +638,12 @@ public:
 
         const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
         DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
+
+        if (GetKey(olc::Key::P).bPressed)
+        {
+            const auto filepath = capture_screenshot();
+            std::println("Screenshot captured at {}!", filepath);
+        }
 
         if (GetMouse(olc::Mouse::LEFT).bHeld || GetMouse(olc::Mouse::RIGHT).bHeld)
         {
@@ -865,7 +963,7 @@ int main(int argc, char** argv)
     }
 
 	Irradiance application{};
-	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 2, 2, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
