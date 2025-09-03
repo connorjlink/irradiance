@@ -39,7 +39,8 @@ static constexpr Real SAMPLE_JITTER = .001f;
 
 static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
-static constexpr Real BASE_ISO = 100.f;
+static constexpr Real BASE_ISO = 25.f;
+static constexpr Real REFERENCE_ISO = 4.f * BASE_ISO; // ISO100
 static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
 
 static constexpr int FRAME_HISTORY = 5;
@@ -75,14 +76,14 @@ public:
         }
     }
     
-    void reset(std::size_t count)
+    void reset(std::size_t new_count)
     {
         index = 0;
         count = 0;
         for (auto& item : data)
         {
             item = {};
-            item.resize(count);
+            item.resize(new_count);
         }
     }
 
@@ -127,7 +128,7 @@ private:
     bool enable_dof = false;
     Real focal_distance = std::numeric_limits<Real>::infinity();
     Real aperture_radius = .1f;
-    Real ISO = BASE_ISO;
+    Real ISO = REFERENCE_ISO;
     Real shutter_speed = 1 / 60.f;
 
     glm::vec3* frame_buffer = nullptr;
@@ -255,6 +256,9 @@ public:
         return emitter.object->area * glm::length(emitter.object->material.emission);
     };
 
+    #define INTERNAL_REVALIDATE(x, y) do { if (glm::isinf(x) || glm::isnan(x)) { x = y; } } while (0)
+    #define REVALIDATE(x) INTERNAL_REVALIDATE(x, 0.f)
+
     Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
     {
         const auto roughness4 = roughness * roughness * roughness * roughness;
@@ -262,8 +266,11 @@ public:
         const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
         const auto angle2 = angle * angle;
 
-        const auto denominator = (angle2 * (roughness4 - 1.f) + 1.f);
-        return roughness4 / (glm::pi<Real>() * denominator * denominator + .001f);
+        const auto scalar = (angle2 * (roughness4 - 1.f) + 1.f);
+        auto denominator = glm::pi<Real>() * scalar * scalar;
+        REVALIDATE(denominator);
+
+        return roughness4 / denominator;
     }
 
     glm::vec3 compute_fresnel_F(const glm::vec3& F0, Real cosine)
@@ -281,8 +288,10 @@ public:
 
         const auto k = (roughness + 1.f) * (roughness + 1.f) / 8.f;
 
-        const auto G1_light = light_angle / (light_angle * (1.f - k) + k + .001f);
-        const auto G1_view = view_angle / (view_angle * (1.f - k) + k + .001f);
+        auto G1_light = light_angle / (light_angle * (1.f - k) + k);
+        REVALIDATE(G1_light);
+        auto G1_view = view_angle / (view_angle * (1.f - k) + k);
+        REVALIDATE(G1_view);
 
         return G1_light * G1_view;
     }
@@ -363,8 +372,6 @@ public:
 
             const auto reflection = glm::reflect(ray.direction, normal);
 
-            auto dls_probability = .5f;
-
             auto shade_ggx = [&]()
             {
                 const auto roughness = glm::max(.001f, mat.roughness);
@@ -399,14 +406,13 @@ public:
             else if (random < metal_weight + reflection_weight)
             {
                 // dielectric reflection
+                const auto specular = shade_ggx();
                 
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
 
-                dls_probability = 0.f;
-
-                absorption = glm::vec3{ mat.transmission };
+                absorption = specular * albedo * glm::vec3{ mat.transmission };
                 weight = reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
@@ -426,8 +432,6 @@ public:
                 // Beer-Lambert attenuation (re-using albedo as absorption)
                 const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
                 const auto attenuation = glm::exp(-mat.albedo * attenuation_distance);
-
-                dls_probability = 0.f;
 
                 absorption = attenuation;
                 weight = refraction_weight;
@@ -459,9 +463,7 @@ public:
                 ray.origin = nearest_intersection.position + normal * .001f;
                 ray.direction = glm::normalize(world_coordinates);
 
-                const auto lambertian = albedo / glm::pi<Real>();
-
-                absorption = lambertian;
+                absorption = albedo;
                 weight = diffuse_weight;
             }
 
@@ -472,7 +474,7 @@ public:
 
 
             // DIRECT LIGHT SAMPLING PATH TERMINATION
-            if (random < dls_probability)
+            if (!emissive_objects.empty())
             {
                 auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f }; 
                 const auto emitter_random = glm::linearRand(0.f, 1.f);
@@ -515,21 +517,18 @@ public:
 
                     const auto pdf = distance2 / (light_cosine * light_area + .001f);
 
-                    auto intersection = RayIntersection{};
-                    const auto scatter = trace(light_ray, bounces - 1, intersection);
-
-                    if (intersection.hit && intersection.object == sampled_emitter.object)
+                    const auto occlusion = compute_nearest_intersection(light_ray);
+                    if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
-                        path = absorption * scatter * radiance * geometry / (weight * pdf + .001f);
+                        path += absorption * radiance * geometry / (weight * pdf + .001f);
                     }
                 }
             }
+            #endif
             
             // STANDARD PATH TERMINATION
-            else if (path == glm::vec3{ 0.f })
-            #endif
             {
-                path = absorption * trace(ray, bounces - 1, output_intersection) / weight;
+                path += absorption * trace(ray, bounces - 1, output_intersection) / weight;
             }
 
             return path;
@@ -605,7 +604,7 @@ public:
         });
         static const auto prism_instance = MeshInstance
         {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, 2.f, .5f }), glm::radians(45.f), UP),
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, -2.f, .5f }), glm::radians(45.f), UP),
             prism
         };
 
@@ -760,13 +759,13 @@ public:
         if (GetKey(olc::Key::HOME).bPressed || GetKey(olc::Key::RIGHT).bPressed)
         {
             ISO *= 2.f;
-            ISO = glm::clamp(ISO, BASE_ISO, MAX_ISO_MULTIPLIER * BASE_ISO);
+            ISO = glm::clamp(ISO, BASE_ISO, MAX_ISO_MULTIPLIER * REFERENCE_ISO);
             dirty = true;
         }
         if (GetKey(olc::Key::END).bPressed || GetKey(olc::Key::LEFT).bPressed)
         {
             ISO /= 2.f;
-            ISO = glm::clamp(ISO, BASE_ISO, MAX_ISO_MULTIPLIER * BASE_ISO);
+            ISO = glm::clamp(ISO, BASE_ISO, MAX_ISO_MULTIPLIER * REFERENCE_ISO);
             dirty = true;
         }
 
@@ -834,9 +833,10 @@ public:
 
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
             const auto iso_corrected = total_color * (ISO / BASE_ISO);
+            const auto tonemapped = tonemap(iso_corrected);
 
-            staging_buffer[i] = iso_corrected;
-            frame_buffer[i] += iso_corrected;
+            staging_buffer[i] = tonemapped;
+            frame_buffer[i] += tonemapped;
         });
 
         if (!dirty && last_dirty)
@@ -891,8 +891,7 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto color = compute_average(x + y * ScreenWidth());
-                    const auto tonemapped = tonemap(color);
-                    Draw(x, y, olc::Pixel(tonemapped.r * 255.f, tonemapped.g * 255.f, tonemapped.b * 255.f));
+                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
                 }
             }
         }
@@ -903,8 +902,7 @@ public:
                 for (int y = 0; y < ScreenHeight(); y++)
                 {
                     const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
-                    const auto tonemapped = tonemap(color);
-                    Draw(x, y, olc::Pixel(tonemapped.r * 255.f, tonemapped.g * 255.f, tonemapped.b * 255.f));
+                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
                 }
             }
         }

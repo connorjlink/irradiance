@@ -30,19 +30,19 @@ namespace ir
                     .texture = rock.get(),
                 }
             },
-            // new Sphere
-            // {
-            //     glm::vec3{ 120.f, -120.f, 0.f },
-            //     60.f,
-            //     PBRMaterial
-            //     {
-            //         .albedo = glm::vec3{ .5f, .5f, .5f },
-            //         .emission = glm::vec3{ 10.f, 10.f, 10.f },
-            //         .metallicity = 1.f,
-            //         .anisotropy = 0.f,
-            //         .roughness = 0.1f,
-            //     }
-            // },
+            new Sphere
+            {
+                glm::vec3{ 120.f, -120.f, 0.f },
+                60.f,
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .5f, .5f, .5f },
+                    .emission = glm::vec3{ 1.f },
+                    .metallicity = 1.f,
+                    .anisotropy = 0.f,
+                    .roughness = 0.1f,
+                }
+            },
             new Sphere
             {
                 glm::vec3{ 0.f, -6.f, 5.f },
@@ -392,7 +392,7 @@ namespace ir
                     .refraction_index = 1.f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
-                    .transmission = 1.f,
+                    .transmission = 0.f,
                     .texture = water.get(),
                 }
             }
