@@ -43,6 +43,8 @@ static constexpr Real BASE_ISO = 25.f;
 static constexpr Real REFERENCE_ISO = 4.f * BASE_ISO; // ISO100
 static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
 
+static constexpr Real SENSOR_HEIGHT = 35.f; // full-frame sensor mm
+
 static constexpr int FRAME_HISTORY = 5;
 
 #ifndef CORNELL
@@ -127,9 +129,10 @@ private:
     Ray* rays = nullptr;
     bool enable_dof = false;
     Real focal_distance = std::numeric_limits<Real>::infinity();
-    Real aperture_radius = .1f;
+    Real aperture_radius = .32f;
     Real ISO = REFERENCE_ISO;
     Real shutter_speed = 1 / 60.f;
+    bool enable_ui = true;
 
     glm::vec3* frame_buffer = nullptr;
     glm::vec3* staging_buffer = nullptr;
@@ -387,8 +390,12 @@ public:
                 const auto reflection_angle = glm::max(0.f, glm::dot(normal, R));
                 const auto view_angle = glm::max(0.f, glm::dot(normal, V));
 
-                // IMPORTANT: MUST ADD SMALL EPSILON TO AVOID DIVIDE BY ZERO CRASH!!!
-                return (D * G * F) / (4.f * reflection_angle * view_angle + .001f);
+                auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
+                REVALIDATE(ggx.x);
+                REVALIDATE(ggx.y);
+                REVALIDATE(ggx.z);
+
+                return ggx;
             };
 
             if (random < metal_weight)
@@ -496,7 +503,7 @@ public:
                     const auto light_normal = sampled_emitter.object->normal_of(light_sample);
 
                     auto light_direction = light_sample - ray.origin;
-                    const auto distance2 = glm::length2(light_direction);
+                    auto distance2 = glm::length2(light_direction);
                     light_direction = glm::normalize(light_direction);
 
                     const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
@@ -512,15 +519,20 @@ public:
                         .direction = light_direction,
                     };
 
-                    const auto geometry = (normal_cosine * light_cosine) / (distance2 + .001f);
+                    const auto geometry = (normal_cosine * light_cosine) / distance2;
                     const auto radiance = sampled_emitter.object->material.emission;
 
-                    const auto pdf = distance2 / (light_cosine * light_area + .001f);
+                    const auto pdf = distance2 / (light_cosine * light_area);
 
                     const auto occlusion = compute_nearest_intersection(light_ray);
                     if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
-                        path += absorption * radiance * geometry / (weight * pdf + .001f);
+                        auto result = absorption * radiance * geometry / (weight * pdf);
+                        REVALIDATE(result.r);
+                        REVALIDATE(result.g);
+                        REVALIDATE(result.b);
+                        
+                        path += result;
                     }
                 }
             }
@@ -545,6 +557,16 @@ public:
 
         return glm::vec3{ 0.f };
     };
+
+    Real compute_focal_length(Real fov)
+    {
+        return .5f * SENSOR_HEIGHT / glm::tan(glm::radians(fov) * .5f);
+    }
+
+    Real compute_fnumber(Real focal_length, Real aperture_radius)
+    {
+        return focal_length / (2.f * aperture_radius);
+    }
 
 public:
 	bool OnUserCreate() override
@@ -640,21 +662,29 @@ public:
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-        DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {}, ms/frame: {:.2f}", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", enable_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 55.f }, std::format("Aperture Size: {:.2f}", aperture_radius), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 65.f }, std::format("ISO: {:.2f} Shutter Speed: {:.2f}", ISO, shutter_speed), olc::YELLOW);
-        DrawStringPropDecal({ 5.f, 75.f }, std::format("FOV: {:.2f}", fov_degrees), olc::YELLOW);
-
-        const auto& ray = rays[GetMouseX() + GetMouseY() * ScreenWidth()].direction;
-        DrawStringPropDecal({ 5.f, 45.f }, std::format("Ray: ({:2f}, {:2f}, {:2f})", ray.x, ray.y, ray.z), olc::YELLOW);
+        if (enable_ui)
+        {
+            DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {} ({:.2f} ms/frame)", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", enable_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 45.f }, std::format("Sensor: ISO {:.0f}, 1/{:.0f}s", ISO, 1.f / shutter_speed), olc::YELLOW);
+            
+            const auto focal_length = compute_focal_length(fov_degrees);
+            const auto fnumber = compute_fnumber(focal_length, aperture_radius);
+            DrawStringPropDecal({ 5.f, 55.f }, std::format("Focal Length: {:.2f}mm ({:.0f}deg)", focal_length, fov_degrees), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 65.f }, std::format("Aperture: f/{:.2f} (r={:.2f}mm)", fnumber, aperture_radius), olc::YELLOW);
+        }
 
         if (GetKey(olc::Key::P).bPressed)
         {
             const auto filepath = capture_screenshot();
             std::println("Screenshot captured at {}!", filepath);
+        }
+
+        if (GetKey(olc::Key::U).bPressed)
+        {
+            enable_ui = !enable_ui;
         }
 
         if (GetMouse(olc::Mouse::LEFT).bHeld || GetMouse(olc::Mouse::RIGHT).bHeld)
@@ -742,18 +772,14 @@ public:
             enable_dof = !enable_dof;
             dirty = true;
         }
-        if (GetKey(olc::Key::UP).bHeld)
+        if (GetKey(olc::Key::UP).bPressed)
         {
-            aperture_radius += fElapsedTime * .5f;
-            // small epsilon required--0.f crashes the program from diskRand()!
-            aperture_radius = glm::max(aperture_radius, .001f);
+            aperture_radius *= 2.f;
             dirty = true;
         }
-        if (GetKey(olc::Key::DOWN).bHeld)
+        if (GetKey(olc::Key::DOWN).bPressed)
         {
-            aperture_radius -= fElapsedTime * .5f;
-            // small epsilon required--0.f crashes the program from diskRand()!
-            aperture_radius = glm::max(aperture_radius, .001f);
+            aperture_radius /= 2.f;
             dirty = true;
         }
         if (GetKey(olc::Key::HOME).bPressed || GetKey(olc::Key::RIGHT).bPressed)
