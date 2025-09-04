@@ -16,6 +16,10 @@ release:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
 	./irradiance -width=300 -height=300 -bounces=5 -samples=1
 
+hires:
+	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
+	./irradiance -width=1000 -height=1000 -bounces=5 -samples=1 -D HIRES
+
 cornell:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL
 	./irradiance -width=300 -height=300 -bounces=5 -samples=1

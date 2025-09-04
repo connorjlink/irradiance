@@ -134,6 +134,21 @@ namespace ir
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
+                    .refraction_index = -1.5f,
+                    .anisotropy = 0.f,
+                    .roughness = 0.f,
+                    .transmission = 1.f,
+                }
+            },
+            new Sphere
+            {
+                glm::vec3{ -8.f, -1.f, 6.f },
+                1.f,
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
                     .refraction_index = 1.5f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
@@ -187,11 +202,11 @@ namespace ir
             },
             new Colloid
             {
-                1.f,
+                .25f,
                 new Cuboid
                 {
-                    glm::vec3{ -3.5f, -6.5f, -.5f },
-                    glm::vec3{ 1.f, 1.f, 1.f },
+                    glm::vec3{ 8.5f, -6.5f, -.5f },
+                    glm::vec3{ 4.f, 4.f, 4.f },
                     PBRMaterial
                     {
                         .albedo = glm::vec3{ .5f, 1.f, .6f },
@@ -388,10 +403,8 @@ namespace ir
                     .albedo = glm::vec3{ .5f, .5f, .5f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
-                    .refraction_index = 1.f,
                     .anisotropy = 0.f,
                     .roughness = 0.f,
-                    .transmission = 0.f,
                     .texture = water.get(),
                 }
             }

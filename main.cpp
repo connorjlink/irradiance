@@ -264,7 +264,9 @@ public:
 
     Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
     {
-        const auto roughness4 = roughness * roughness * roughness * roughness;
+        // NOTE: I have no idea why this extra epsilon is necessary, but otherwise things with very low roughness 
+        // end up basically black and colorless. TODO: Ask Shaeffer?
+        const auto roughness4 = roughness * roughness * roughness * roughness + .1f;
 
         const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
         const auto angle2 = angle * angle;
@@ -336,10 +338,8 @@ public:
                 
             // ensure normal is relative to the front face
             auto normal = nearest_intersection.normal;
-            if (glm::dot(normal, ray.direction) > 0.f)
-            {
-                normal = -normal;
-            }
+            const bool is_front_face = glm::dot(normal, ray.direction) < 0.f;
+            normal = is_front_face ? normal : -normal;
 
             // ensure random sample hits hemisphere above the front face surface normal
             auto random_in_unit_sphere = glm::sphericalRand(1.f);
@@ -377,15 +377,13 @@ public:
 
             auto shade_ggx = [&]()
             {
-                const auto roughness = glm::max(.001f, mat.roughness);
-
                 const auto V = -ray.direction;
                 const auto R = reflection; 
                 const auto H = glm::normalize(R + V);
 
-                const auto D = compute_GGX_D(H, normal, roughness);
+                const auto D = compute_GGX_D(H, normal, mat.roughness);
                 const auto F = compute_fresnel_F(F0, glm::max(0.f, glm::dot(H, V)));
-                const auto G = compute_smith_G(R, V, normal, roughness);
+                const auto G = compute_smith_G(R, V, normal, mat.roughness);
 
                 const auto reflection_angle = glm::max(0.f, glm::dot(normal, R));
                 const auto view_angle = glm::max(0.f, glm::dot(normal, V));
@@ -419,7 +417,7 @@ public:
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
 
-                absorption = specular * albedo * glm::vec3{ mat.transmission };
+                absorption = specular * glm::vec3{ mat.transmission };
                 weight = reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
@@ -429,11 +427,20 @@ public:
                     ? (1.f / nearest_intersection.material.refraction_index) 
                     : nearest_intersection.material.refraction_index;
 
-                const auto refraction = glm::refract(ray.direction, normal, eta);
+                auto refraction = glm::refract(ray.direction, normal, eta);
 
-                // NOTE: IMPORTANT--OFFSET IS A NEGATIVE MARGIN TO AVOID SELF-INTERSECTION FOR REFRACTION RAY
-                ray.origin = nearest_intersection.position - normal * .001f;
-                // TODO: sample according to roughness and anisotropy
+                if (glm::length2(refraction) < .001f)
+                {
+                    // total internal reflection
+                    refraction = reflection;
+                    ray.origin = nearest_intersection.position + normal * .001f;
+                }
+                else
+                {
+                    // NOTE: IMPORTANT--OFFSET IS POSSIBLY A NEGATIVE MARGIN TO AVOID SELF-INTERSECTION FOR REFRACTION RAY
+                    ray.origin = nearest_intersection.position + (is_front_face ? -normal : normal) * .001f;
+                }
+
                 ray.direction = glm::normalize(refraction + random_in_unit_sphere * nearest_intersection.material.roughness);
 
                 // Beer-Lambert attenuation (re-using albedo as absorption)
@@ -478,7 +485,6 @@ public:
 
             #define ENABLE_DLS
             #ifdef ENABLE_DLS
-
 
             // DIRECT LIGHT SAMPLING PATH TERMINATION
             if (!emissive_objects.empty())
@@ -847,7 +853,11 @@ public:
                 }
 
                 auto intersection = RayIntersection{};
-                total_color += trace(ray_jittered, _bounces, intersection);
+                auto result = trace(ray_jittered, _bounces, intersection);
+                REVALIDATE(result.r);
+                REVALIDATE(result.g);
+                REVALIDATE(result.b);
+                total_color += result;
             }
 
             if (glm::any(glm::isinf(total_color)) || glm::any(glm::isnan(total_color))) 
@@ -1021,8 +1031,14 @@ int main(int argc, char** argv)
         }
     }
 
+    #ifndef HIRES
+        static constexpr auto PPP = 3;
+    #else
+        static constexpr auto PPP = 1;
+    #endif
+
 	Irradiance application{};
-	if (application.Construct(width, height, 3, 3, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, PPP, PPP, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }

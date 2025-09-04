@@ -271,7 +271,7 @@ namespace ir
         }
 
         const auto t1 = tmin >= 0.f ? tmin : tmax;
-        const auto t2 = tmin < 0.f ? tmax : tmin;
+        const auto t2 = tmax;
 
         if (t1 > 0.f)
         {
