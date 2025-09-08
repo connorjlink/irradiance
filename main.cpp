@@ -266,7 +266,7 @@ public:
     {
         // NOTE: I have no idea why this extra epsilon is necessary, but otherwise things with very low roughness 
         // end up basically black and colorless. TODO: Ask Shaeffer?
-        const auto roughness4 = roughness * roughness * roughness * roughness + .1f;
+        const auto roughness4 = roughness * roughness * roughness * roughness + .001f;
 
         const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
         const auto angle2 = angle * angle;
@@ -396,10 +396,21 @@ public:
                 return ggx;
             };
 
+            #define ENABLE_GGX_SPECULAR
+
             if (random < metal_weight)
             {
                 // metallic reflection
+
+                #ifdef ENABLE_GGX_SPECULAR
+
                 const auto specular = shade_ggx();
+
+                #else
+
+                const auto specular = F;
+
+                #endif
                 
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
@@ -411,8 +422,17 @@ public:
             else if (random < metal_weight + reflection_weight)
             {
                 // dielectric reflection
+
+                #ifdef ENABLE_GGX_SPECULAR
+
                 const auto specular = shade_ggx();
                 
+                #else
+
+                const auto specular = F;
+
+                #endif
+
                 ray.origin = nearest_intersection.position + normal * .001f;
                 // TODO: sample according to roughness and anisotropy
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
@@ -458,6 +478,9 @@ public:
                 // heavily modified from the cosine distribution method plus re-basis using orthonormal space
                 // https://www.rorydriscoll.com/2009/01/07/better-sampling/
 
+                #define ENABLE_COSINE_SAMPLING
+                #ifdef ENABLE_COSINE_SAMPLING
+
                 const auto disk = glm::diskRand(1.f);
                 const auto z = glm::sqrt(glm::clamp(1.f - disk.x * disk.x - disk.y * disk.y, 0.f, 1.f));
 
@@ -476,6 +499,13 @@ public:
 
                 ray.origin = nearest_intersection.position + normal * .001f;
                 ray.direction = glm::normalize(world_coordinates);
+
+                #else
+
+                ray.origin = nearest_intersection.position + normal * .001f;
+                ray.direction = glm::normalize(reflection + random_in_unit_sphere);
+
+                #endif
 
                 absorption = albedo;
                 weight = diffuse_weight;
