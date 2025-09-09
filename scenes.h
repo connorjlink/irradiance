@@ -230,6 +230,19 @@ namespace ir
                     .roughness = 1.f,
                 }
             },
+            new Sphere
+            {
+                glm::vec3{ 40.f, -4.f, 0.f },
+                .25f,
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .56f, .518f, .835f },
+                    .emission = glm::vec3{ 1.e1f, .9e1f, .8e1f },
+                    .metallicity = 1.f,
+                    .anisotropy = 0.f,
+                    .roughness = 1.f,
+                }
+            },
             new Quadric
             {
                 // hyperbolic paraboloid https://en.wikipedia.org/wiki/Paraboloid

@@ -10,12 +10,16 @@ LONG_WAVELENGTH = 700.0
 MEDIUM_WAVELENGTH = 550.0
 SHORT_WAVELENGTH = 450.0
 
+WAVELENGTHS = [LONG_WAVELENGTH, MEDIUM_WAVELENGTH, SHORT_WAVELENGTH]
+
+REFENCE_WAVELENGTH = SHORT_WAVELENGTH
+
 WAVELENGTH_RESOLUTION = 10.0
 WAVELENGTH_DELTA = (LONG_WAVELENGTH - SHORT_WAVELENGTH) / WAVELENGTH_RESOLUTION
 
 WAVELENGTH_DEVIATION = 40.0
 
-DIFFRACTION_RASTER_SIZE = 300
+DIFFRACTION_RASTER_SIZE = 512
 
 # the following functions derive from the sRGB color space conversion formulae as described here
 # https://entropymine.com/imageworsener/srgbformula/
@@ -42,8 +46,11 @@ def save_debug_image(array, path, logarithmic=False):
         data -= data.min()
         data /= data.max() if data.max() > 0 else 1
     else:
-        data -= data.min()
-        data /= data.max() if data.max() > 0 else 1
+        lo, hi = np.percentile(data, [0.1, 99.9])
+        if hi > lo:
+            data = np.clip((data - lo) / (hi - lo), 0, 1)
+        else:
+            data[:] = 0
     image = (data * 255 + 0.5).astype(np.uint8)
     Image.fromarray(image, mode='L').save(path)
 
@@ -94,29 +101,48 @@ def rescale_psf(psf, wavelength):
     psf_scaled /= psf_scaled.sum()
     return psf_scaled
 
+def reapportion_psf(psf, energy):
+    sy, sx = np.array(psf.shape) // 2
+    y, x = np.indices(psf.shape)
+    radii = np.sqrt((y - sy)**2 + (x - sx)**2)
+    flat_sort = np.argsort(radii.ravel())
+    cumsum = np.cumsum(psf.ravel()[flat_sort])
+    idx = np.searchsorted(cumsum, energy * psf.sum())
+    r_max = radii.ravel()[flat_sort][idx]
+    mask = radii <= r_max
+    corrected = psf * mask
+    corrected /= corrected.sum()
+    return corrected
+
 def compute_diffraction(image, blades, rotation):
     aperture = polygonal_aperture(blades, rotation)
     save_debug_image(aperture, "diffracted_aperture.png")
     psf = compute_psf(aperture)
-    psf = np.log10(psf + 1e-10)
     save_debug_image(psf, "diffracted_psf.png", logarithmic=False)
 
-    # integrate along wavelength with pre-defined resolution
+    # sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
+    luminance = 0.2126 * image[..., 0] + 0.7152 * image[..., 1] + 0.0722 * image[..., 2]
+    # proper relinearization with gamma
+    luminance = np.pow(luminance, 1.5)
 
-    accumulated_image = np.zeros(image.shape, dtype=np.float32)
-    wavelength = SHORT_WAVELENGTH
-    accumulated_count = 0
-    
-    while wavelength <= LONG_WAVELENGTH + 1e-4:
-        psf_scaled = rescale_psf(psf, wavelength)
-        psf_reshaped = reshape_psf(psf_scaled, image.shape[:2])
-        convolved_image = fftconvolve(image, psf_reshaped[..., np.newaxis], mode='same')
-        accumulated_image += convolved_image
-        wavelength += WAVELENGTH_DELTA
-        accumulated_count += 1
+    save_debug_image(luminance, "diffracted_luminance.png")
 
-    accumulated_image /= accumulated_count
-    return accumulated_image
+    result = np.zeros_like(image)
+
+    for channel in range(len(WAVELENGTHS)):
+        channel_psf = rescale_psf(psf, WAVELENGTHS[channel])
+        channel_psf = reapportion_psf(channel_psf, energy=0.995)
+        convolution = fftconvolve(image[..., channel] * luminance, channel_psf, mode='same')
+        result[..., channel] = convolution
+
+    channel_maxima = [result[..., c].max() for c in range(len(WAVELENGTHS))]
+    max_psf = max(channel_maxima)
+    if max_psf > 0:
+        result /= max_psf
+
+    MULTIPLIER = 2.0
+    out = image + MULTIPLIER * result
+    return np.clip(out, 0, 1)
 
 
 def main():
@@ -146,7 +172,6 @@ def main():
     diffraction_pattern = np.clip(diffraction_pattern, 0.0, 1.0)
     diffraction_srgb = np.vectorize(linear_to_srgb)(diffraction_pattern)
 
-    # TODO: WHY IS THE ADDED 0.5 NECESSARY? IT UNDERFLOWS FOR BLACK VALUES OTHERWISE... ROUNDING DOWN?
     out_array = (diffraction_srgb * 255.0 + 0.5).astype(np.uint8)
 
     basename = filepath.split('/')[-1].split('.')[0]
