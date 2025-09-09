@@ -40,7 +40,7 @@ static constexpr Real SAMPLE_JITTER = .001f;
 static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr Real BASE_ISO = 25.f;
-static constexpr Real REFERENCE_ISO = 4.f * BASE_ISO; // ISO100
+static constexpr Real REFERENCE_ISO = 4.f * 4.f * BASE_ISO; // ISO400
 static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
 
 static constexpr Real SENSOR_HEIGHT = 35.f; // full-frame sensor mm
@@ -898,7 +898,7 @@ public:
             total_color /= static_cast<Real>(_samples);
 
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
-            const auto iso_corrected = total_color * (ISO / BASE_ISO);
+            const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
             const auto tonemapped = tonemap(iso_corrected);
 
             staging_buffer[i] = tonemapped;
