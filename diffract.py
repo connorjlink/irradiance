@@ -101,23 +101,17 @@ def rescale_psf(psf, wavelength):
     psf_scaled /= psf_scaled.sum()
     return psf_scaled
 
-def reapportion_psf(psf, energy):
-    sy, sx = np.array(psf.shape) // 2
-    y, x = np.indices(psf.shape)
-    radii = np.sqrt((y - sy)**2 + (x - sx)**2)
-    flat_sort = np.argsort(radii.ravel())
-    cumsum = np.cumsum(psf.ravel()[flat_sort])
-    idx = np.searchsorted(cumsum, energy * psf.sum())
-    r_max = radii.ravel()[flat_sort][idx]
-    mask = radii <= r_max
-    corrected = psf * mask
-    corrected /= corrected.sum()
-    return corrected
-
 def compute_diffraction(image, blades, rotation):
     aperture = polygonal_aperture(blades, rotation)
     save_debug_image(aperture, "diffracted_aperture.png")
     psf = compute_psf(aperture)
+
+    lo, hi = np.percentile(psf, [0.1, 99.9])
+    if hi > lo:
+        psf = np.clip((psf - lo) / (hi - lo), 0, 1)
+    else:
+        psf[:] = 0
+
     save_debug_image(psf, "diffracted_psf.png", logarithmic=False)
 
     # sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
@@ -131,16 +125,14 @@ def compute_diffraction(image, blades, rotation):
 
     for channel in range(len(WAVELENGTHS)):
         channel_psf = rescale_psf(psf, WAVELENGTHS[channel])
-        channel_psf = reapportion_psf(channel_psf, energy=0.995)
         convolution = fftconvolve(image[..., channel] * luminance, channel_psf, mode='same')
         result[..., channel] = convolution
 
-    channel_maxima = [result[..., c].max() for c in range(len(WAVELENGTHS))]
-    max_psf = max(channel_maxima)
+    max_psf = result.max()
     if max_psf > 0:
         result /= max_psf
 
-    MULTIPLIER = 2.0
+    MULTIPLIER = 3.0
     out = image + MULTIPLIER * result
     return np.clip(out, 0, 1)
 

@@ -1068,7 +1068,7 @@ int main(int argc, char** argv)
     #endif
 
 	Irradiance application{};
-	if (application.Construct(width, height, PPP, PPP, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, 1, 1, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }
