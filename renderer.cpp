@@ -26,16 +26,37 @@ namespace ir
 {
     bool BoundingVolume::contains(const glm::vec3& point) const
     {
-        return (point.x >= origin.x) && (point.x <= origin.x + size.x) &&
-               (point.y >= origin.y) && (point.y <= origin.y + size.y) &&
-               (point.z >= origin.z) && (point.z <= origin.z + size.z);
+        return (point.x >= origin.x) && (point.x <= extent.x) &&
+               (point.y >= origin.y) && (point.y <= extent.y) &&
+               (point.z >= origin.z) && (point.z <= extent.z);
     }
 
-    bool BoundingVolume::intersects(const BoundingVolume& other) const
+    bool BoundingVolume::overlaps(const BoundingVolume& other) const
     {
-        return (origin.x <= other.origin.x + other.size.x) && (origin.x + size.x >= other.origin.x) &&
-               (origin.y <= other.origin.y + other.size.y) && (origin.y + size.y >= other.origin.y) &&
-               (origin.z <= other.origin.z + other.size.z) && (origin.z + size.z >= other.origin.z);
+        return (origin.x <= other.extent.x) && (extent.x >= other.origin.x) &&
+               (origin.y <= other.extent.y) && (extent.y >= other.origin.y) &&
+               (origin.z <= other.extent.z) && (extent.z >= other.origin.z);
+    }
+
+    bool BoundingVolume::intersects(const Ray& ray) const
+    {
+        // Modified slab method https://raytracing.github.io/books/RayTracingTheNextWeek.html#boundingvolumehierarchies/axis-alignedboundingboxes(aabbs)
+
+        const auto t0 = (origin - ray.origin) / ray.direction;
+        const auto t1 = (origin + size - ray.origin) / ray.direction;
+
+        const auto entry = glm::min(t0, t1);
+        const auto exit = glm::max(t0, t1);
+
+        const auto tmin = glm::max(glm::max(entry.x, entry.y), glm::max(entry.z, 0.f));
+        const auto tmax = glm::min(glm::min(exit.x, exit.y), exit.z);
+
+        return tmax >= tmin;
+    }
+
+    BoundingVolume* Object::bounds()
+    {
+        return bound;
     }
 
     RayIntersection Sphere::intersect(const Ray& ray)
@@ -90,11 +111,6 @@ namespace ir
     glm::vec3 Sphere::normal_of(const glm::vec3& position)
     {
         return glm::normalize(position - center);
-    }
-
-    BoundingVolume Sphere::bounds()
-    {
-        return BoundingVolume{ center - glm::vec3{ radius }, glm::vec3{ 2.f * radius } };
     }
 
     RayIntersection Triangle::intersect(const Ray& ray)
@@ -169,15 +185,6 @@ namespace ir
         return normal;
     }
 
-    BoundingVolume Triangle::bounds()
-    {
-        // check by complete extent
-        const auto minimum = glm::min(v0, glm::min(v1, v2));
-        const auto maximum = glm::max(v0, glm::max(v1, v2));
-
-        return BoundingVolume{ minimum, maximum - minimum };
-    }
-
     RayIntersection Quadrilateral::intersect(const Ray& ray)
     {
         // quad intersection from https://raytracing.github.io/books/RayTracingTheNextWeek.html
@@ -234,15 +241,6 @@ namespace ir
     glm::vec3 Quadrilateral::normal_of(const glm::vec3& position)
     {
         return normal;
-    }
-
-    BoundingVolume Quadrilateral::bounds()
-    {
-        // check by complete extent
-        const auto minimum = glm::min(v0, glm::min(glm::min(v0 + v1, v0 + v2), v0 + v1 + v2));
-        const auto maximum = glm::max(v0, glm::max(glm::max(v0 + v1, v0 + v2), v0 + v1 + v2));
-
-        return BoundingVolume{ minimum, maximum - minimum };
     }
 
     RayIntersection Cuboid::intersect(const Ray& ray)
@@ -353,11 +351,6 @@ namespace ir
         return glm::vec3{ 0.f };
     }
 
-    BoundingVolume Cuboid::bounds()
-    {
-        return BoundingVolume{ origin, size };
-    }
-
     RayIntersection Quadric::intersect(const Ray& ray)
     {
         const auto& O = ray.origin;
@@ -448,11 +441,6 @@ namespace ir
         });
     }
 
-    BoundingVolume Quadric::bounds()
-    {
-        return container->bounds();
-    }
-
     RayIntersection Colloid::intersect(const Ray& ray)
     {
         const auto intersection = container->intersect(ray);
@@ -505,11 +493,6 @@ namespace ir
     glm::vec3 Colloid::normal_of(const glm::vec3& position)
     {
         return glm::sphericalRand(1.f);
-    }
-
-    BoundingVolume Colloid::bounds()
-    {
-        return container->bounds();
     }
 
     RayIntersection MeshInstance::intersect(const Ray& ray) const
@@ -565,11 +548,6 @@ namespace ir
         }
 
         return nearest_intersection;
-    }
-
-    BoundingVolume MeshInstance::bounds() const
-    {
-        return volume;
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.

@@ -1,6 +1,8 @@
 #ifndef IRRADIANCE_RENDERER_H
 #define IRRADIANCE_RENDERER_H
 
+#include "glm/ext/scalar_common.hpp"
+
 #include "utility.h"
 #include "olcPixelGameEngine.h"
 
@@ -14,16 +16,24 @@ namespace ir
     public:
         glm::vec3 origin;
         glm::vec3 size;
+        glm::vec3 extent;
+        BoundingVolume* subdivision0;
+        BoundingVolume* subdivision1;
 
     public:
         BoundingVolume(const glm::vec3& origin, const glm::vec3& size)
             : origin{ origin }, size{ size }
         {
+            extent = origin + size;
+            // TODO: split adaptively for BVH
+            subdivision0 = nullptr;
+            subdivision1 = nullptr;
         }
 
     public:
         bool contains(const glm::vec3& point) const;
-        bool intersects(const BoundingVolume& other) const;
+        bool overlaps(const BoundingVolume& other) const;
+        bool intersects(const Ray& ray) const;
     };
 
     struct Object
@@ -32,6 +42,10 @@ namespace ir
         PBRMaterial material;
         Real area = 0.f;
         glm::vec3 centroid = glm::vec3{ 0.f };
+        BoundingVolume* bound = nullptr;
+
+    public:
+        BoundingVolume* bounds();
 
     public:
         Object(const PBRMaterial& material) 
@@ -44,7 +58,6 @@ namespace ir
         virtual RayIntersection intersect(const Ray& ray) = 0;
         virtual glm::vec3 sample() = 0;
         virtual glm::vec3 normal_of(const glm::vec3& position) = 0;
-        virtual BoundingVolume bounds() = 0;
     };
 
     struct Sphere : public Object
@@ -59,13 +72,13 @@ namespace ir
         {
             area = 4.f * glm::pi<Real>() * radius * radius;
             centroid = center;
+            bound = new BoundingVolume{ center - glm::vec3{ radius }, glm::vec3{ 2.f * radius } };
         }
 
     public:
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
-        BoundingVolume bounds() override;
     };
 
     struct Triangle : public Object
@@ -93,13 +106,16 @@ namespace ir
             // area is half the equivalent parallelogram
             area = .5f * glm::length(glm::cross(edge0, edge1));
             centroid = (v0 + v1 + v2) / 3.f;
+
+            const auto origin = glm::min(v0, v1, v2);
+            const auto scissor = glm::max(v0, v1, v2) - origin;
+            bound = new BoundingVolume{ origin, scissor };
         }
 
     public:
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
-        BoundingVolume bounds() override;
     };
 
     struct Quadrilateral : public Object
@@ -111,7 +127,6 @@ namespace ir
         // Ax + By + Cz = D (constant)
         Real constant;
         glm::vec3 reciprocal;
-
 
     public:
         Quadrilateral(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const PBRMaterial& material)
@@ -128,13 +143,16 @@ namespace ir
             area = glm::length(orthogonal);
             // parallelogram centroid: r0 + (u + v) / 2
             centroid = v0 + (this->v1 + this->v2) / 2.f;
+
+            const auto origin = glm::min(v0, v1, v2);
+            const auto scissor = glm::max(v0, v1, v2) - origin;
+            bound = new BoundingVolume{ origin, scissor };
         }
     
     public:
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
-        BoundingVolume bounds() override;
     }; 
 
     struct Cuboid : public Object
@@ -149,13 +167,13 @@ namespace ir
         {
             area = 2.f * (size.x * size.y + size.y * size.z + size.z * size.x);
             centroid = origin + size / 2.f;
+            bound = new BoundingVolume{ origin, size };
         }
 
     public:
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
-        BoundingVolume bounds() override;
     };
 
     struct Quadric : public Object
@@ -173,6 +191,7 @@ namespace ir
             area = size.x * size.z;
             centroid = origin + size / 2.f;
             container = new Cuboid{ origin, size, material };
+            bound = container->bound;
         }
 
     private:
@@ -187,7 +206,6 @@ namespace ir
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
-        BoundingVolume bounds() override;
     };
 
     struct Colloid : public Object
@@ -200,13 +218,15 @@ namespace ir
         Colloid(Real density, Object* container)
             : density{ density }, container{ container }, Object{ container->material }
         {
+            area = container->area;
+            centroid = container->centroid;
+            bound = container->bound;
         }
 
     public:
         RayIntersection intersect(const Ray& ray) override;
         glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
-        BoundingVolume bounds() override;
     };
 
     using Mesh = std::vector<Object*>;
@@ -217,11 +237,11 @@ namespace ir
         glm::mat4 transform;
         glm::mat4 inverse;
         const Mesh& mesh;
-        BoundingVolume volume;
+        BoundingVolume* volume;
 
     public:
         MeshInstance(const glm::mat4& transform, const Mesh& mesh)
-            : transform{ transform }, mesh{ mesh }, volume{ glm::vec3{ std::numeric_limits<Real>::max() }, glm::vec3{ std::numeric_limits<Real>::min() } }
+            : transform{ transform }, mesh{ mesh }, volume{ new BoundingVolume{ glm::vec3{ std::numeric_limits<Real>::max() }, glm::vec3{ std::numeric_limits<Real>::min() } } }
         {
             inverse = glm::inverse(transform);
 
@@ -233,14 +253,14 @@ namespace ir
                 }
 
                 const auto bounds = object->bounds();
-                volume.origin = glm::min(volume.origin, glm::vec3{ transform * glm::vec4{ bounds.origin, 1.f } });
-                volume.size = glm::max(volume.size, glm::vec3{ transform * glm::vec4{ bounds.origin + bounds.size, 1.f } });
+                // progressively find the tightest volume containing every sub-object
+                volume->origin = glm::min(volume->origin, glm::vec3{ transform * glm::vec4{ bounds->origin, 1.f } });
+                volume->size = glm::max(volume->size, glm::vec3{ transform * glm::vec4{ bounds->origin + bounds->size, 1.f } });
             }
         }
 
     public:
         RayIntersection intersect(const Ray& ray) const;
-        BoundingVolume bounds() const;
     };
 
     Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material);

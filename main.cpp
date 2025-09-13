@@ -860,14 +860,13 @@ public:
             for (int s = 0; s < _samples; s++)
             {
                 const auto timestamp = glm::linearRand(0.f, shutter_speed);
-                const auto scalar = timestamp > 0.f ? (timestamp / shutter_speed) : 0.f;
                 
                 // interpolate the camera orientation
                 #pragma message("TODO this might need to be slerp() to preserve solid-angle magnitude")
 
-                const auto interpolated_yaw = glm::mix(last_yaw_degrees, yaw_degrees, scalar);
-                const auto interpolated_pitch = glm::mix(last_pitch_degrees, pitch_degrees, scalar);
-                const auto interpolated_position = glm::mix(last_position, position, scalar);
+                const auto interpolated_yaw = glm::mix(last_yaw_degrees, yaw_degrees, timestamp);
+                const auto interpolated_pitch = glm::mix(last_pitch_degrees, pitch_degrees, timestamp);
+                const auto interpolated_position = glm::mix(last_position, position, timestamp);
 
                 const auto interpolated_direction = compute_direction(interpolated_yaw, interpolated_pitch);
                 const auto interpolated_view = glm::lookAt(interpolated_position, interpolated_position + interpolated_direction, UP);
