@@ -379,6 +379,9 @@ namespace ir
             const auto t1 = (-b - glm::sqrt(d)) / (2.f * a);
             const auto t2 = (-b + glm::sqrt(d)) / (2.f * a);
 
+            const auto entry = glm::min(t1, t2);
+            const auto exit = glm::max(t1, t2);
+
             if (t1 > 0.f)
             {
                 const auto intersection = ray.origin + ray.direction * t1;
@@ -391,6 +394,12 @@ namespace ir
                     return MISS;
                 }
 
+                // TODO: why doesn't this fix the back-face not rendering?
+                if (glm::dot(normal, ray.direction) > 0.f)
+                {
+                    normal = -normal;
+                }
+
                 const auto difference = intersection - container->centroid;
                 // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
                 const auto u = .5f + glm::atan2(difference.z, difference.x) / (2.f * glm::pi<Real>());
@@ -401,8 +410,8 @@ namespace ir
                     .position = intersection,
                     .normal = normal,
                     .material = material,
-                    .depth = t1,
-                    .exit = t2,
+                    .depth = entry,
+                    .exit = exit,
                     .hit = true,
                     .object = this,
                     .uv = { u, v },

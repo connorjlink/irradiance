@@ -14,6 +14,7 @@
 #include <numeric>
 #include <execution>
 #include <memory>
+#include <deque>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_NEON
@@ -46,6 +47,8 @@ static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
 static constexpr Real SENSOR_HEIGHT = 35.f; // full-frame sensor mm
 
 static constexpr int FRAME_HISTORY = 5;
+
+static constexpr Real MAX_LUMINANCE = 10.f;
 
 #ifndef CORNELL
     static constexpr bool ENABLE_SKYBOX = true;
@@ -118,22 +121,38 @@ public:
 	}
 
 private:
+    static constexpr std::array<Real, 10> SHUTTER_SPEEDS
+    {
+        1 / 1000.f,
+        1 / 500.f,
+        1 / 250.f,
+        1 / 125.f,
+        1 / 60.f,
+        1 / 30.f,
+        1 / 15.f,
+        1 / 10.f,
+        1 / 5.f,
+        1 / 2.f
+    };
+
+private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
     bool last_dirty = false;
     glm::vec3 position = { 0.f, 0.f, -0.95f };
-    glm::vec3 last_position;
     Real fov_degrees = 90.f;
     Real yaw_degrees = 0.f, pitch_degrees = 0.f;
-    Real last_yaw_degrees = 0.f, last_pitch_degrees = 0.f;
     int accumulated_frames = 1;
     Ray* rays = nullptr;
     bool enable_dof = false;
     Real focal_distance = std::numeric_limits<Real>::infinity();
     Real aperture_radius = .32f;
     Real ISO = REFERENCE_ISO;
-    Real shutter_speed = 1 / 60.f;
+
+    Real shutter_speed;
+    std::size_t shutter_index = 5;
     bool enable_ui = true;
+    bool tonemap_old = false;
 
     glm::vec3* frame_buffer = nullptr;
     std::vector<int> index_buffer;
@@ -150,6 +169,108 @@ public:
     std::vector<Emitter> emissive_objects;
 
 public:
+    struct ShutterSample
+    {
+        // camera orientation
+        glm::vec3 position;
+        Real yaw;
+        Real pitch;
+        Real time;
+    };
+
+    Real now = 0.f;
+    std::deque<ShutterSample> shutter_history;
+
+public:
+    void capture_shutter(Real timestamp)
+    {
+        shutter_history.push_back(ShutterSample{ position, yaw_degrees, pitch_degrees, timestamp });
+        
+        // maintain shutter history within shutter speed interval only
+        const auto discard_time = timestamp - shutter_speed;
+        while (shutter_history.size() > 2 && shutter_history.front().time < discard_time)
+        {
+            shutter_history.pop_front();
+        }
+    }
+
+    ShutterSample sample_shutter(Real timestamp)
+    {
+        if (shutter_history.size() < 2)
+        {
+            return ShutterSample{ position, yaw_degrees, pitch_degrees, timestamp };
+        }
+
+        // find the two samples surrounding the target time and lerp
+
+        auto next = shutter_history.begin();
+        auto previous = next++;
+
+        while (next != shutter_history.end() && next->time < timestamp)
+        {
+            previous = next++;
+        }
+
+        if (next == shutter_history.end())
+        {
+            return *previous;
+        }
+
+        #pragma message("TODO this might need to be slerp() to preserve solid-angle magnitude")
+
+        const auto interval = next->time - previous->time;
+        const auto scalar = (timestamp - previous->time) / interval;
+
+        return ShutterSample
+        {
+            .position = glm::mix(previous->position, next->position, scalar),
+            .yaw = glm::mix(previous->yaw, next->yaw, scalar),
+            .pitch = glm::mix(previous->pitch, next->pitch, scalar),
+            .time = timestamp
+        };
+    }
+
+    glm::vec3 tonemap_aces(const glm::vec3& color)
+    {
+        // excellent approximation of proper matrix ACES
+        // full credit to Krzysztof Narkowicz: https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/
+    
+        const auto a = 2.51f;
+        const auto b = 0.03f;
+        const auto c = 2.43f;
+        const auto d = 0.59f;
+        const auto e = 0.14f;
+
+        return (color * (a * color + b)) / (color * (c * color + d) + e);
+    }
+
+    glm::vec3 tonemap_reinhard(const glm::vec3& color)
+    {
+        // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
+
+        return color / (color + glm::vec3{ 1.f });
+    }
+
+    glm::vec3 tonemap(const glm::vec3& color)
+    {
+        if (!tonemap_old)
+        {
+            return tonemap_aces(color);
+        }
+        else
+        {
+            return tonemap_reinhard(color);
+        }
+    }
+
+    glm::vec3 gamma_correct(const glm::vec3& color)
+    {
+        // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
+
+        const auto corrected = glm::pow(color, glm::vec3{ 1.f / 2.2f });
+        return glm::clamp(corrected, 0.f, 1.f);
+    }
+
     std::string capture_screenshot()
     {
         const auto now = std::chrono::system_clock::now();
@@ -168,13 +289,16 @@ public:
             {
                 const auto index = x + y * ScreenWidth();
 
-                const auto original = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                const auto hdr = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+
+                const auto tone_mapped = tonemap(hdr);
+                const auto gamma_corrected = gamma_correct(tone_mapped);
 
                 const auto color = RGB
                 { 
-                    static_cast<std::uint8_t>(255.f * original.r), 
-                    static_cast<std::uint8_t>(255.f * original.g), 
-                    static_cast<std::uint8_t>(255.f * original.b)
+                    static_cast<std::uint8_t>(255.f * gamma_corrected.r), 
+                    static_cast<std::uint8_t>(255.f * gamma_corrected.g), 
+                    static_cast<std::uint8_t>(255.f * gamma_corrected.b)
                 };
 
                 rgb[index] = color;
@@ -560,11 +684,7 @@ public:
             
             // STANDARD PATH TERMINATION
             {
-                auto result = absorption * trace(ray, bounces - 1, output_intersection) / weight;
-                REVALIDATE(result.r);
-                REVALIDATE(result.g);
-                REVALIDATE(result.b);
-                path += result;
+                path += absorption * trace(ray, bounces - 1, output_intersection) / weight;;
             }
 
             return path;
@@ -599,14 +719,15 @@ public:
         
         rays = new Ray[number];
         frame_buffer = new glm::vec3[number];
-
-        last_position = position;
-        last_yaw_degrees = yaw_degrees;
-        last_pitch_degrees = pitch_degrees;
+        std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
 
         // precompute an index sequence to be used for the parallelized for_each render loop
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
+
+        shutter_speed = SHUTTER_SPEEDS[shutter_index];
+        shutter_history = {};
+        capture_shutter(now);
 
         initialize_textures();
 
@@ -689,13 +810,14 @@ public:
             DrawStringPropDecal({ 5.f, 5.f }, std::format("Frames: {} ({:.2f} ms/frame)", accumulated_frames, fElapsedTime * 1000.f), olc::YELLOW);
             DrawStringPropDecal({ 5.f, 15.f }, std::format("Position: ({:.2f}, {:.2f}, {:.2f})", position.x, position.y, position.z), olc::YELLOW);
             DrawStringPropDecal({ 5.f, 25.f }, std::format("Yaw: {:.2f} Pitch: {:.2f}", yaw_degrees, pitch_degrees), olc::YELLOW);
-            DrawStringPropDecal({ 5.f, 35.f }, std::format("DOF: {} @ {:.2f}", enable_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
-            DrawStringPropDecal({ 5.f, 45.f }, std::format("Sensor: ISO {:.0f}, 1/{:.0f}s", ISO, 1.f / shutter_speed), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 35.f }, std::format("Tonemapping: {}", tonemap_old ? "Reinhard" : "Approximated ACES"), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 45.f }, std::format("DOF: {} @ {:.2f}", enable_dof ? "ON" : "OFF", focal_distance), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 55.f }, std::format("Sensor: ISO {:.0f}, 1/{:.0f}s", ISO, 1.f / shutter_speed), olc::YELLOW);
             
             const auto focal_length = compute_focal_length(fov_degrees);
             const auto fnumber = compute_fnumber(focal_length, aperture_radius);
-            DrawStringPropDecal({ 5.f, 55.f }, std::format("Focal Length: {:.2f}mm ({:.0f}deg)", focal_length, fov_degrees), olc::YELLOW);
-            DrawStringPropDecal({ 5.f, 65.f }, std::format("Aperture: f/{:.2f} (r={:.2f}mm)", fnumber, aperture_radius), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 65.f }, std::format("Focal Length: {:.2f}mm ({:.0f}deg)", focal_length, fov_degrees), olc::YELLOW);
+            DrawStringPropDecal({ 5.f, 75.f }, std::format("Aperture: f/{:.2f} (r={:.2f}mm)", fnumber, aperture_radius), olc::YELLOW);
         }
 
         if (GetKey(olc::Key::P).bPressed)
@@ -830,6 +952,38 @@ public:
             dirty = true;
         }
 
+        if (GetKey(olc::Key::K).bPressed)
+        {
+            shutter_index++;
+            shutter_index = std::clamp(shutter_index, 0uz, SHUTTER_SPEEDS.size() - 1);
+            shutter_speed = SHUTTER_SPEEDS[shutter_index];
+            dirty = true;
+        }
+        if (GetKey(olc::Key::J).bPressed)
+        {
+            shutter_index--;
+            shutter_index = std::clamp(shutter_index, 0uz, SHUTTER_SPEEDS.size() - 1);
+            shutter_speed = SHUTTER_SPEEDS[shutter_index];
+            dirty = true;
+        }
+
+            
+        if (GetKey(olc::Key::T).bPressed)
+        {
+            tonemap_old = !tonemap_old;
+            dirty = true;
+        }
+
+        if (dirty)
+        {
+            const auto number = ScreenWidth() * ScreenHeight();
+            std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
+            accumulated_frames = 1;
+        }
+
+        now += fElapsedTime;
+        capture_shutter(now);
+
         const auto aspect_ratio = static_cast<Real>(ScreenWidth()) / static_cast<Real>(ScreenHeight());
         const auto fov_radians = glm::radians(fov_degrees);
 
@@ -838,53 +992,51 @@ public:
 
         // PARALLELIZE
         
-        auto tonemap = [&](const glm::vec3& color)
-        {
-            // Reinhard filter https://en.wikipedia.org/wiki/Tone_mapping
-            const auto tone_mapped = color / (color + glm::vec3{ 1.f });
-            // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
-            const auto gamma_corrected = glm::pow(tone_mapped, glm::vec3{ 1.f / 2.2f });
-
-            return gamma_corrected;
-        };
-
         std::for_each(std::execution::par, index_buffer.begin(), index_buffer.end(), [&](int i)
         {
             const auto x = static_cast<Real>(i % ScreenWidth());
             const auto y = static_cast<Real>(i / ScreenWidth());
 
-            const auto& ray = rays[i];
+            const auto u = x / ScreenWidth();
+            const auto v = y / ScreenHeight();
+
+            // normalized device coordinates
+            const auto ndc_x = 2.f * u - 1.f;
+            const auto ndc_y = 2.f * v - 1.f;
+
+            const auto clip_space_position = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
+            const auto world_space_position_homogeneous = inverse_projection * clip_space_position;
+            const auto world_space_position = world_space_position_homogeneous / world_space_position_homogeneous.w;
+            const auto view_direction = glm::vec4{ glm::normalize(glm::vec3{ world_space_position }), 0.f };
+
+            const auto current_direction = compute_direction(yaw_degrees, pitch_degrees);
+            const auto current_view = glm::lookAt(position, position + current_direction, UP);
+            const auto current_inverse_view = glm::inverse(current_view);
+            const auto current_world_space_direction = current_inverse_view * view_direction;
+
+            // correct the ray coordinate space for accurate focus click distance
+            rays[i] = Ray{ position, glm::normalize(glm::vec3{ current_world_space_direction }), 0.f };
 
             auto total_color = glm::vec3{ 0.f, 0.f, 0.f };
 
             for (int s = 0; s < _samples; s++)
             {
-                const auto timestamp = glm::linearRand(0.f, shutter_speed);
-                
-                // interpolate the camera orientation
-                #pragma message("TODO this might need to be slerp() to preserve solid-angle magnitude")
+                // centered shutter interval over the current frame, interpolate according to frametime
+                const auto timestamp = glm::linearRand(now - shutter_speed, now);
+                const auto then = sample_shutter(timestamp);
+                rays[i].timestamp = timestamp - now;
 
-                const auto interpolated_yaw = glm::mix(last_yaw_degrees, yaw_degrees, timestamp);
-                const auto interpolated_pitch = glm::mix(last_pitch_degrees, pitch_degrees, timestamp);
-                const auto interpolated_position = glm::mix(last_position, position, timestamp);
+                const auto interpolated_yaw = then.yaw;
+                const auto interpolated_pitch = then.pitch;
+                const auto interpolated_position = then.position;
 
                 const auto interpolated_direction = compute_direction(interpolated_yaw, interpolated_pitch);
                 const auto interpolated_view = glm::lookAt(interpolated_position, interpolated_position + interpolated_direction, UP);
-                const auto inverse_view = glm::inverse(interpolated_view);
+                const auto interpolated_inverse_view = glm::inverse(interpolated_view);
 
-                const auto u = x / ScreenWidth();
-                const auto v = y / ScreenHeight();
-
-                // normalized device coordinates
-                const auto ndc_x = 2.f * u - 1.f;
-                const auto ndc_y = 2.f * v - 1.f;
-
-                const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
-                const auto world_space_pos_homogeneous = inverse_projection * clip_space_pos;
-                const auto world_space_pos = world_space_pos_homogeneous / world_space_pos_homogeneous.w;
-                const auto world_space_pos_normalized = inverse_view * glm::normalize(glm::vec4{ glm::vec3{ world_space_pos }, 0.f });
-
-                const auto interpolated_ray = Ray{ interpolated_position, glm::normalize(glm::vec3{ world_space_pos_normalized }), timestamp };
+                const auto interpolated_world_space_direction = interpolated_inverse_view * view_direction;
+                
+                const auto interpolated_ray = Ray{ interpolated_position, glm::normalize(glm::vec3{ interpolated_world_space_direction }), timestamp };
 
                 // using linear to avoid biasing sampling toward the center of each pixel
                 auto ray_jittered = interpolated_ray;
@@ -897,7 +1049,7 @@ public:
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
                     ray_jittered.origin += compute_right(interpolated_yaw, interpolated_pitch) * disk_sample.x + UP * disk_sample.y;
                     // NOTE: rays do not arrive to the camera parallel to the sensor, so must compute the corresponding focal point in world space first                    
-                    const auto focal_point = ray.origin + ray.direction * focal_distance;
+                    const auto focal_point = interpolated_ray.origin + interpolated_ray.direction * focal_distance;
                     ray_jittered.direction = glm::normalize(focal_point - ray_jittered.origin);
                 }
 
@@ -906,6 +1058,12 @@ public:
                 REVALIDATE(result.r);
                 REVALIDATE(result.g);
                 REVALIDATE(result.b);
+
+                if (const auto length = glm::length(result); length > MAX_LUMINANCE)
+                {
+                    result = result / length * MAX_LUMINANCE;
+                }
+
                 total_color += result;
             }
 
@@ -918,17 +1076,9 @@ public:
 
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
-            const auto tonemapped = tonemap(iso_corrected);
-
-            frame_buffer[i] += tonemapped;
+            const auto tone_mapped = tonemap(iso_corrected);
+            frame_buffer[i] += tone_mapped;
         });
-
-        if (!dirty && last_dirty)
-        {
-            const auto number = ScreenWidth() * ScreenHeight();
-            std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
-            accumulated_frames = 1;
-        }
 
         if (dirty)
         {
@@ -940,13 +1090,10 @@ public:
             for (int y = 0; y < ScreenHeight(); y++)
             {
                 const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
-                Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
+                const auto gamma_corrected = gamma_correct(color);
+                Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
             }
         }
-
-        last_position = position;
-        last_yaw_degrees = yaw_degrees;
-        last_pitch_degrees = pitch_degrees;
 
         last_mouse_position = GetMousePos();
         last_dirty = dirty;
@@ -982,6 +1129,8 @@ ParseResult parse_int(const std::string& input)
 int main(int argc, char** argv)
 {
     int width = 500, height = 500;
+
+    auto hires = false;
 
     if (argc > 1)
     {
@@ -1031,14 +1180,18 @@ int main(int argc, char** argv)
                     _captures = result.result;
                 }
             }
+            else if (name == "-hires")
+            {
+                const auto result = parse_int(value);
+                if (result.success && result.result != 0)
+                {
+                    hires = true;
+                }
+            }
         }
     }
 
-    #ifndef HIRES
-        static constexpr auto PPP = 3;
-    #else
-        static constexpr auto PPP = 1;
-    #endif
+    const auto PPP = hires ? 1 : 3;
 
 	Irradiance application{};
 	if (application.Construct(width, height, PPP, PPP, false, false, false, false) == olc::OK)

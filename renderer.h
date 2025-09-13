@@ -19,6 +19,7 @@ namespace ir
         glm::vec3 extent;
         BoundingVolume* subdivision0;
         BoundingVolume* subdivision1;
+        std::vector<Object*> contents;
 
     public:
         BoundingVolume(const glm::vec3& origin, const glm::vec3& size)

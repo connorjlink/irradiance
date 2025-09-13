@@ -37,10 +37,11 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .1f, .1f, .8f },
-                    .emission = glm::vec3{ 1e2f },
+                    .emission = glm::vec3{ 1.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 0.1f,
+                    .texture = gemstone.get(),
                 }
             },
             new Sphere
@@ -539,7 +540,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .emission = glm::vec3{ .2f },
+                    .emission = glm::vec3{ 1.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,
