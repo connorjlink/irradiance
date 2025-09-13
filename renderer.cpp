@@ -69,7 +69,8 @@ namespace ir
         if (objects.size() == 1)
         {
             // leaf node
-            volume = objects.front()->bounds();
+            const auto bounds = objects.front()->bounds();
+            volume = new BoundingVolume{ bounds->origin, bounds->size, { objects.front() } };
             return;
         }
 
@@ -871,11 +872,6 @@ namespace ir
             const auto world_space_exit_position = glm::vec3{ transform * glm::vec4{ local_space_exit_position, 1.f } };
             local_intersection.exit = glm::length(world_space_exit_position - ray.origin);
         }
-
-        const auto normal_matrix = glm::transpose(inverse);
-        local_intersection.normal = glm::normalize(glm::vec3{ normal_matrix * glm::vec4{ local_intersection.normal, 0.f } });
-
-        const auto length2 = glm::dot(local_intersection.normal, local_intersection.normal);
 
         return local_intersection;
     }

@@ -227,7 +227,8 @@ namespace ir
             area = size.x * size.z;
             centroid = origin + size / 2.f;
             container = new Cuboid{ origin, size, material };
-            bound = container->bound;
+            const auto container_bounds = container->bounds();
+            bound = new BoundingVolume{ container_bounds->origin, container_bounds->size, { this } };
         }
 
     private:
