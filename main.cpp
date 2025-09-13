@@ -122,9 +122,10 @@ private:
     bool dirty = true;
     bool last_dirty = false;
     glm::vec3 position = { 0.f, 0.f, -0.95f };
+    glm::vec3 last_position;
     Real fov_degrees = 90.f;
-    Real yaw_degrees = 0.f;
-    Real pitch_degrees = 0.f;
+    Real yaw_degrees = 0.f, pitch_degrees = 0.f;
+    Real last_yaw_degrees = 0.f, last_pitch_degrees = 0.f;
     int accumulated_frames = 1;
     Ray* rays = nullptr;
     bool enable_dof = false;
@@ -135,10 +136,6 @@ private:
     bool enable_ui = true;
 
     glm::vec3* frame_buffer = nullptr;
-    glm::vec3* staging_buffer = nullptr;
-
-    CircularBuffer<std::vector<glm::vec3>, FRAME_HISTORY> frame_history;
-
     std::vector<int> index_buffer;
 
 public:
@@ -210,10 +207,10 @@ public:
         return nearest_intersection;
     }
 
-    glm::vec3 compute_direction() const
+    glm::vec3 compute_direction(Real yaw, Real pitch) const
     {
-        const auto yaw_radians = glm::radians(yaw_degrees);
-        const auto pitch_radians = glm::radians(pitch_degrees);
+        const auto yaw_radians = glm::radians(yaw);
+        const auto pitch_radians = glm::radians(pitch);
 
         const auto x = glm::cos(pitch_radians) * glm::sin(yaw_radians);
         const auto y = glm::sin(pitch_radians);
@@ -222,23 +219,10 @@ public:
         return glm::normalize(glm::vec3{ x, y, z });
     }
 
-    glm::vec3 compute_right() const
+    glm::vec3 compute_right(Real yaw, Real pitch) const
     {
-        const auto direction = compute_direction();
+        const auto direction = compute_direction(yaw, pitch);
         return glm::normalize(glm::cross(direction, UP));
-    }
-
-    glm::vec3 compute_average(std::size_t pixel)
-    {
-        auto result = glm::vec3{ 0.f };
-
-        for (int i = 0; i < frame_history.size(); i++)
-        {
-            result += frame_history.at(i)[pixel];
-        }
-        result /= static_cast<Real>(FRAME_HISTORY);
-
-        return result;
     }
 
     glm::vec2 compute_skybox_uv_coordinates(const glm::vec3& direction) const
@@ -576,7 +560,11 @@ public:
             
             // STANDARD PATH TERMINATION
             {
-                path += absorption * trace(ray, bounces - 1, output_intersection) / weight;
+                auto result = absorption * trace(ray, bounces - 1, output_intersection) / weight;
+                REVALIDATE(result.r);
+                REVALIDATE(result.g);
+                REVALIDATE(result.b);
+                path += result;
             }
 
             return path;
@@ -611,12 +599,10 @@ public:
         
         rays = new Ray[number];
         frame_buffer = new glm::vec3[number];
-        staging_buffer = new glm::vec3[number];
 
-        for (auto& frame : frame_history)
-        {
-            frame.resize(number, glm::vec3{ 0.f });
-        }
+        last_position = position;
+        last_yaw_degrees = yaw_degrees;
+        last_pitch_degrees = pitch_degrees;
 
         // precompute an index sequence to be used for the parallelized for_each render loop
         index_buffer.resize(number, 0);
@@ -772,23 +758,23 @@ public:
 
         if (GetKey(olc::Key::W).bHeld)
         {
-            position += compute_direction() * fElapsedTime * movement_speed;
+            position += compute_direction(yaw_degrees, pitch_degrees) * fElapsedTime * movement_speed;
             dirty = true;
         }
         if (GetKey(olc::Key::S).bHeld)
         {
-            position -= compute_direction() * fElapsedTime * movement_speed;
+            position -= compute_direction(yaw_degrees, pitch_degrees) * fElapsedTime * movement_speed;
             dirty = true;
         }
         if (GetKey(olc::Key::A).bHeld)
         {
-            const auto right = compute_right();
+            const auto right = compute_right(yaw_degrees, pitch_degrees);
             position -= right * fElapsedTime * movement_speed;
             dirty = true;
         }
         if (GetKey(olc::Key::D).bHeld)
         {
-            const auto right = compute_right();
+            const auto right = compute_right(yaw_degrees, pitch_degrees);
             position += right * fElapsedTime * movement_speed;
             dirty = true;
         }
@@ -844,6 +830,12 @@ public:
             dirty = true;
         }
 
+        const auto aspect_ratio = static_cast<Real>(ScreenWidth()) / static_cast<Real>(ScreenHeight());
+        const auto fov_radians = glm::radians(fov_degrees);
+
+        const auto projection = glm::perspective(fov_radians, aspect_ratio, .1f, 1000.f);
+        const auto inverse_projection = glm::inverse(projection);
+
         // PARALLELIZE
         
         auto tonemap = [&](const glm::vec3& color)
@@ -858,8 +850,8 @@ public:
 
         std::for_each(std::execution::par, index_buffer.begin(), index_buffer.end(), [&](int i)
         {
-            const auto x = i % ScreenWidth();
-            const auto y = i / ScreenWidth();
+            const auto x = static_cast<Real>(i % ScreenWidth());
+            const auto y = static_cast<Real>(i / ScreenWidth());
 
             const auto& ray = rays[i];
 
@@ -867,8 +859,36 @@ public:
 
             for (int s = 0; s < _samples; s++)
             {
+                const auto timestamp = glm::linearRand(0.f, shutter_speed);
+                const auto scalar = timestamp > 0.f ? (timestamp / shutter_speed) : 0.f;
+                
+                // interpolate the camera orientation
+                #pragma message("TODO this might need to be slerp() to preserve solid-angle magnitude")
+
+                const auto interpolated_yaw = glm::mix(last_yaw_degrees, yaw_degrees, scalar);
+                const auto interpolated_pitch = glm::mix(last_pitch_degrees, pitch_degrees, scalar);
+                const auto interpolated_position = glm::mix(last_position, position, scalar);
+
+                const auto interpolated_direction = compute_direction(interpolated_yaw, interpolated_pitch);
+                const auto interpolated_view = glm::lookAt(interpolated_position, interpolated_position + interpolated_direction, UP);
+                const auto inverse_view = glm::inverse(interpolated_view);
+
+                const auto u = x / ScreenWidth();
+                const auto v = y / ScreenHeight();
+
+                // normalized device coordinates
+                const auto ndc_x = 2.f * u - 1.f;
+                const auto ndc_y = 2.f * v - 1.f;
+
+                const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
+                const auto world_space_pos_homogeneous = inverse_projection * clip_space_pos;
+                const auto world_space_pos = world_space_pos_homogeneous / world_space_pos_homogeneous.w;
+                const auto world_space_pos_normalized = inverse_view * glm::normalize(glm::vec4{ glm::vec3{ world_space_pos }, 0.f });
+
+                const auto interpolated_ray = Ray{ interpolated_position, glm::normalize(glm::vec3{ world_space_pos_normalized }), timestamp };
+
                 // using linear to avoid biasing sampling toward the center of each pixel
-                auto ray_jittered = ray;
+                auto ray_jittered = interpolated_ray;
                 ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
                 ray_jittered.direction = glm::normalize(ray_jittered.direction);
 
@@ -876,8 +896,8 @@ public:
                 {
                     const auto disk_sample = glm::diskRand(aperture_radius);
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
-                    ray_jittered.origin += compute_right() * disk_sample.x + UP * disk_sample.y;
-                    // TODO: ask Schaeffer about this step. It works correctly per Ray Tracing in One Weekend, but not sure why.
+                    ray_jittered.origin += compute_right(interpolated_yaw, interpolated_pitch) * disk_sample.x + UP * disk_sample.y;
+                    // NOTE: rays do not arrive to the camera parallel to the sensor, so must compute the corresponding focal point in world space first                    
                     const auto focal_point = ray.origin + ray.direction * focal_distance;
                     ray_jittered.direction = glm::normalize(focal_point - ray_jittered.origin);
                 }
@@ -901,79 +921,33 @@ public:
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
             const auto tonemapped = tonemap(iso_corrected);
 
-            staging_buffer[i] = tonemapped;
             frame_buffer[i] += tonemapped;
         });
 
         if (!dirty && last_dirty)
         {
-            const auto count = ScreenWidth() * ScreenHeight();
-
-            memcpy(frame_buffer, staging_buffer, sizeof(glm::vec3) * count);
-            memset(staging_buffer, 0, sizeof(glm::vec3) * count);
-
+            const auto number = ScreenWidth() * ScreenHeight();
+            std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
             accumulated_frames = 1;
-            frame_history.reset(count);
         }
 
         if (dirty)
         {
             DrawRectDecal({ 1.f, 1.f }, { 2.f, 2.f }, olc::GREEN);
-
-            // recalculate the camera rays
-
-            const auto aspect_ratio = static_cast<Real>(ScreenWidth()) / static_cast<Real>(ScreenHeight());
-            const auto fov_radians = glm::radians(fov_degrees);
-
-            const auto right = compute_right();
-
-            const auto projection = glm::perspective(fov_radians, aspect_ratio, .1f, 1000.f);
-            const auto inverse_projection = glm::inverse(projection);
-            const auto view = glm::lookAt(position, position + compute_direction(), UP);
-            const auto inverse_view = glm::inverse(view);
-
-            for (int x = 0; x < ScreenWidth(); x++)
-            {
-                for (int y = 0; y < ScreenHeight(); y++)
-                {
-                    const auto u = static_cast<Real>(x) / static_cast<Real>(ScreenWidth());
-                    const auto v = static_cast<Real>(y) / static_cast<Real>(ScreenHeight());
-
-                    // normalized device coordinates
-                    const auto ndc_x = 2.f * u - 1.f;
-                    const auto ndc_y = 2.f * v - 1.f;
-
-                    const auto clip_space_pos = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
-                    const auto world_space_pos_homogeneous = inverse_projection * clip_space_pos;
-                    const auto world_space_pos = world_space_pos_homogeneous / world_space_pos_homogeneous.w;
-                    const auto world_space_pos_normalized = inverse_view * glm::normalize(glm::vec4{ glm::vec3{ world_space_pos }, 0.f });
-
-                    rays[y * ScreenWidth() + x] = Ray{ position, world_space_pos_normalized };
-                }
-            }
-
-            for (int x = 0; x < ScreenWidth(); x++)
-            {
-                for (int y = 0; y < ScreenHeight(); y++)
-                {
-                    const auto color = compute_average(x + y * ScreenWidth());
-                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
-                }
-            }
         }
-        else
+
+        for (int x = 0; x < ScreenWidth(); x++)
         {
-            for (int x = 0; x < ScreenWidth(); x++)
+            for (int y = 0; y < ScreenHeight(); y++)
             {
-                for (int y = 0; y < ScreenHeight(); y++)
-                {
-                    const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
-                    Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
-                }
+                const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
             }
         }
 
-        frame_history.push(std::vector<glm::vec3>(staging_buffer, staging_buffer + ScreenWidth() * ScreenHeight()));
+        last_position = position;
+        last_yaw_degrees = yaw_degrees;
+        last_pitch_degrees = pitch_degrees;
 
         last_mouse_position = GetMousePos();
         last_dirty = dirty;
@@ -1068,7 +1042,7 @@ int main(int argc, char** argv)
     #endif
 
 	Irradiance application{};
-	if (application.Construct(width, height, 1, 1, false, false, false, false) == olc::OK)
+	if (application.Construct(width, height, PPP, PPP, false, false, false, false) == olc::OK)
     {
 		application.Start();
     }

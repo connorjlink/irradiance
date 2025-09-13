@@ -23,6 +23,7 @@ namespace ir
     {
         glm::vec3 origin;
         glm::vec3 direction;
+        float timestamp = 0.f;
     };
 
     struct PBRMaterial
