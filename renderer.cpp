@@ -54,6 +54,143 @@ namespace ir
         return tmax >= tmin;
     }
 
+    BLAS::BLAS(const MeshInstance& meshes)
+        : BLAS(meshes.mesh)
+    {
+    }
+
+    BLAS::BLAS(const std::vector<Object*>& objects)
+    {
+        if (objects.empty())
+        {
+            return;
+        }
+
+        if (objects.size() == 1)
+        {
+            // leaf node
+            volume = objects.front()->bounds();
+            return;
+        }
+
+        // compute a bounding volume for all objects
+        auto origin = glm::vec3{ std::numeric_limits<Real>::max() };
+        auto extent = glm::vec3{ std::numeric_limits<Real>::min() };
+
+        for (const auto& object : objects)
+        {
+            if (!object)
+            {
+                continue;
+            }
+
+            const auto bounds = object->bounds();
+            origin = glm::min(origin, bounds->origin);
+            extent = glm::max(extent, bounds->origin + bounds->size);
+        }
+
+        volume = new BoundingVolume{ origin, extent - origin };
+
+        // split along the longest axis at the median
+        const auto size = extent - origin;
+        const auto axis = size.x > size.y ? (size.x > size.z ? 0 : 2) : (size.y > size.z ? 1 : 2);
+
+        std::vector<Object*> left_objects;
+        std::vector<Object*> right_objects;
+
+        const auto midpoint = origin[axis] + size[axis] * .5f;
+
+        for (const auto& object : objects)
+        {
+            if (!object)
+            {
+                continue;
+            }
+
+            if (object->centroid[axis] < midpoint)
+            {
+                left_objects.push_back(object);
+            }
+            else
+            {
+                right_objects.push_back(object);
+            }
+        }
+
+        // handle unbalanced splits by forcing a balanced split
+        if (left_objects.empty() || right_objects.empty())
+        {
+            left_objects.clear();
+            right_objects.clear();
+
+            // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
+            std::vector<Object*> sorted_objects = objects;
+            std::sort(sorted_objects.begin(), sorted_objects.end(), [axis](Object* left, Object* right)
+            {
+                return left->centroid[axis] < right->centroid[axis];
+            });
+
+            const auto half = objects.size() / 2;
+            left_objects.insert(left_objects.end(), sorted_objects.begin(), sorted_objects.begin() + half);
+            right_objects.insert(right_objects.end(), sorted_objects.begin() + half, sorted_objects.end());
+        }
+
+        left = new BLAS{ left_objects };
+        right = new BLAS{ right_objects };
+    }
+
+    BLAS::BLAS(BoundingVolume* volume, BLAS* left, BLAS* right)
+        : volume{ volume }, left{ left }, right{ right }
+    {
+    }
+
+    RayIntersection BLAS::intersect(const Ray& ray)
+    {
+        if (!volume || !volume->intersects(ray))
+        {
+            return MISS;
+        }
+
+        if (!left && !right)
+        {
+            // leaf node, hit-test every object in this volume
+            
+            auto nearest_intersection = MISS;
+
+            for (const auto& object : volume->contents)
+            {
+                const auto intersection = object->intersect(ray);
+
+                if (intersection.hit && intersection.depth < nearest_intersection.depth)
+                {
+                    nearest_intersection = intersection;
+                }
+            }
+
+            return nearest_intersection;
+        }
+
+        // branch node, traverse children (~log2 speedup)
+
+        const auto left_intersection = left ? left->intersect(ray) : MISS;
+        const auto right_intersection = right ? right->intersect(ray) : MISS;
+
+        if (left_intersection.hit && right_intersection.hit)
+        {
+            return left_intersection.depth < right_intersection.depth ? left_intersection : right_intersection;
+        }
+        else if (left_intersection.hit)
+        {
+            return left_intersection;
+        }
+        else if (right_intersection.hit)
+        {
+            return right_intersection;
+        }
+        
+        return MISS;
+    }
+
     BoundingVolume* Object::bounds()
     {
         return bound;
@@ -506,57 +643,64 @@ namespace ir
 
     RayIntersection MeshInstance::intersect(const Ray& ray) const
     {
-        auto nearest_intersection = RayIntersection{}, furthest_intersection = RayIntersection{};
-
-        auto is_composite_mesh = false;
-
-        for (const auto& object : mesh)
+        const auto local_space_ray = Ray
         {
-            if (!object)
+            .origin = glm::vec3{ inverse * glm::vec4{ ray.origin, 1.f } },
+            // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
+            .direction = glm::vec3{ inverse * glm::vec4{ ray.direction, 0.f } },
+        };
+
+        auto local_intersection = MISS;
+
+        if (blas)
+        {
+            local_intersection = blas->intersect(local_space_ray);
+        }
+        else
+        {
+            auto nearest_intersection = RayIntersection{}, furthest_intersection = RayIntersection{};
+
+            for (const auto& object : mesh)
             {
-                continue;
+                if (!object)
+                {
+                    continue;
+                }
+
+                const auto intersection = object->intersect(local_space_ray);
+                if (intersection.hit)
+                {
+                    // TODO: ask Shaeffer why these are not required (produce shadow artifacts)
+                    // const auto entry_position = intersection.position;
+                    // const auto exit_position = intersection.position + ray_transformed.direction * (intersection.exit - intersection.depth);
+                    // intersection.depth = glm::length(glm::vec3{ instance.transform * glm::vec4{ entry_position, 1.f } } - ray.origin);
+                    // intersection.exit = glm::length(glm::vec3{ instance.transform * glm::vec4{ exit_position, 1.f } } - ray.origin);
+
+                    if (intersection.depth < nearest_intersection.depth)
+                    {
+                        nearest_intersection = intersection;
+                    }
+                    else if (intersection.exit > furthest_intersection.exit)
+                    {
+                        furthest_intersection = intersection;
+                    }
+                }
             }
 
-            // transform ray into object's local space
-            const auto ray_transformed = Ray
+            if (nearest_intersection.hit && furthest_intersection.hit && nearest_intersection.exit == std::numeric_limits<float>::infinity())
             {
-                .origin = glm::vec3{ inverse * glm::vec4{ ray.origin, 1.f } },
-                // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-                .direction = glm::vec3{ inverse * glm::vec4{ ray.direction, 0.f } },
-            };
-
-            auto intersection = object->intersect(ray_transformed);
-            if (intersection.hit)
-            {
-                // transform relevant intersection space (object local coordinates) back into world space
-
-                intersection.position = glm::vec3{ transform * glm::vec4{ intersection.position, 1.f } };
-                // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-                intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ intersection.normal, 0.f } });
-
-                // TODO: ask Shaeffer why these are not required (produce shadow artifacts)
-                // const auto entry_position = intersection.position;
-                // const auto exit_position = intersection.position + ray_transformed.direction * (intersection.exit - intersection.depth);
-                // intersection.depth = glm::length(glm::vec3{ instance.transform * glm::vec4{ entry_position, 1.f } } - ray.origin);
-                // intersection.exit = glm::length(glm::vec3{ instance.transform * glm::vec4{ exit_position, 1.f } } - ray.origin);
-
-                if (intersection.depth < nearest_intersection.depth)
-                {
-                    nearest_intersection = intersection;
-                }
-                else if (intersection.exit > furthest_intersection.exit)
-                {
-                    furthest_intersection = intersection;
-                }
+                nearest_intersection.exit = furthest_intersection.exit;
             }
+
+            local_intersection = nearest_intersection;
         }
 
-        if (nearest_intersection.hit && furthest_intersection.hit && nearest_intersection.exit == std::numeric_limits<float>::infinity())
-        {
-            nearest_intersection.exit = furthest_intersection.exit;
-        }
+        // transform relevant intersection space (object local coordinates) back into world space
+        local_intersection.position = glm::vec3{ transform * glm::vec4{ local_intersection.position, 1.f } };
+        // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
+        local_intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ local_intersection.normal, 0.f } });
 
-        return nearest_intersection;
+        return local_intersection;
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.

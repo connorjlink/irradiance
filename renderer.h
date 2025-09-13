@@ -17,24 +17,50 @@ namespace ir
         glm::vec3 origin;
         glm::vec3 size;
         glm::vec3 extent;
-        BoundingVolume* subdivision0;
-        BoundingVolume* subdivision1;
         std::vector<Object*> contents;
 
     public:
-        BoundingVolume(const glm::vec3& origin, const glm::vec3& size)
-            : origin{ origin }, size{ size }
+        BoundingVolume(const glm::vec3& origin, const glm::vec3& size, const std::vector<Object*>& contents = {})
+            : origin{ origin }, size{ size }, contents{ contents }
         {
             extent = origin + size;
-            // TODO: split adaptively for BVH
-            subdivision0 = nullptr;
-            subdivision1 = nullptr;
         }
 
     public:
         bool contains(const glm::vec3& point) const;
         bool overlaps(const BoundingVolume& other) const;
         bool intersects(const Ray& ray) const;
+    };
+
+    struct MeshInstance;
+
+    // constructed in object space
+    struct BLAS
+    {
+    public:
+        BoundingVolume* volume = nullptr;
+        // left = right = nullptr -> leaf
+        BLAS* left = nullptr;
+        BLAS* right = nullptr;
+        
+    public:
+        BLAS(const MeshInstance& meshes);
+        BLAS(const std::vector<Object*>& objects);
+        BLAS(BoundingVolume* volume, BLAS* left, BLAS* right);
+
+    public:
+        RayIntersection intersect(const Ray& ray);
+    };
+
+    // constructed in world space
+    struct TLAS
+    {
+    public:
+        BoundingVolume* volume = nullptr;
+        // left = right = nullptr -> leaf
+        TLAS* left = nullptr;
+        TLAS* right = nullptr;
+        #pragma message("TODO finish top-level acceleration structure")
     };
 
     struct Object
@@ -73,7 +99,7 @@ namespace ir
         {
             area = 4.f * glm::pi<Real>() * radius * radius;
             centroid = center;
-            bound = new BoundingVolume{ center - glm::vec3{ radius }, glm::vec3{ 2.f * radius } };
+            bound = new BoundingVolume{ center - glm::vec3{ radius }, glm::vec3{ 2.f * radius }, { this } };
         }
 
     public:
@@ -110,7 +136,7 @@ namespace ir
 
             const auto origin = glm::min(v0, v1, v2);
             const auto scissor = glm::max(v0, v1, v2) - origin;
-            bound = new BoundingVolume{ origin, scissor };
+            bound = new BoundingVolume{ origin, scissor, { this } };
         }
 
     public:
@@ -147,7 +173,7 @@ namespace ir
 
             const auto origin = glm::min(v0, v1, v2);
             const auto scissor = glm::max(v0, v1, v2) - origin;
-            bound = new BoundingVolume{ origin, scissor };
+            bound = new BoundingVolume{ origin, scissor, { this } };
         }
     
     public:
@@ -168,7 +194,7 @@ namespace ir
         {
             area = 2.f * (size.x * size.y + size.y * size.z + size.z * size.x);
             centroid = origin + size / 2.f;
-            bound = new BoundingVolume{ origin, size };
+            bound = new BoundingVolume{ origin, size, { this } };
         }
 
     public:
@@ -240,11 +266,17 @@ namespace ir
         const Mesh& mesh;
         BoundingVolume* volume;
 
+        // bottom level acceleration structure for this mesh instance only built in object space
+        BLAS* blas;
+
     public:
         MeshInstance(const glm::mat4& transform, const Mesh& mesh)
-            : transform{ transform }, mesh{ mesh }, volume{ new BoundingVolume{ glm::vec3{ std::numeric_limits<Real>::max() }, glm::vec3{ std::numeric_limits<Real>::min() } } }
+            : transform{ transform }, mesh{ mesh }
         {
             inverse = glm::inverse(transform);
+
+            auto world_space_minimum = glm::vec3{ std::numeric_limits<Real>::max() };
+            auto world_space_maximum = glm::vec3{ std::numeric_limits<Real>::lowest() };
 
             for (const auto& object : mesh)
             {
@@ -255,9 +287,13 @@ namespace ir
 
                 const auto bounds = object->bounds();
                 // progressively find the tightest volume containing every sub-object
-                volume->origin = glm::min(volume->origin, glm::vec3{ transform * glm::vec4{ bounds->origin, 1.f } });
-                volume->size = glm::max(volume->size, glm::vec3{ transform * glm::vec4{ bounds->origin + bounds->size, 1.f } });
+                world_space_minimum = glm::min(world_space_minimum, glm::vec3{ transform * glm::vec4{ bounds->origin, 1.f } });
+                world_space_maximum = glm::max(world_space_maximum, glm::vec3{ transform * glm::vec4{ bounds->origin + bounds->size, 1.f } });
             }
+
+            volume = new BoundingVolume{ world_space_minimum, world_space_maximum - world_space_minimum, mesh };
+
+            blas = new BLAS{ mesh };
         }
 
     public:
