@@ -12,7 +12,7 @@
 
 namespace ir
 {
-    MeshInstance test_spheres() 
+    MeshInstance* test_spheres() 
     {
         static const auto mesh = Mesh
         {
@@ -424,14 +424,14 @@ namespace ir
             }
         };
 
-        return
+        return new MeshInstance
         {
             glm::identity<glm::mat4>(),
             mesh,
         };
     };
 
-    MeshInstance cornell_box()
+    MeshInstance* cornell_box()
     {
         static const auto mesh = Mesh
         {
@@ -548,7 +548,7 @@ namespace ir
             }
         };
 
-        return MeshInstance
+        return new MeshInstance
         {
             glm::identity<glm::mat4>(),
             mesh,

@@ -17,12 +17,14 @@ namespace ir
         glm::vec3 origin;
         glm::vec3 size;
         glm::vec3 extent;
+        glm::vec3 centroid;
         std::vector<Object*> contents;
 
     public:
         BoundingVolume(const glm::vec3& origin, const glm::vec3& size, const std::vector<Object*>& contents = {})
             : origin{ origin }, size{ size }, contents{ contents }
         {
+            centroid = origin + (size * .5f);
             extent = origin + size;
         }
 
@@ -49,7 +51,7 @@ namespace ir
         BLAS(BoundingVolume* volume, BLAS* left, BLAS* right);
 
     public:
-        RayIntersection intersect(const Ray& ray);
+        RayIntersection intersect(const Ray& ray) const;
     };
 
     // constructed in world space
@@ -60,7 +62,14 @@ namespace ir
         // left = right = nullptr -> leaf
         TLAS* left = nullptr;
         TLAS* right = nullptr;
-        #pragma message("TODO finish top-level acceleration structure")
+        std::vector<MeshInstance*> contents;
+
+    public:
+        TLAS(const std::vector<MeshInstance*>& meshes);
+        TLAS(BoundingVolume* volume, TLAS* left, TLAS* right);
+
+    public:
+        RayIntersection intersect(const Ray& ray) const;
     };
 
     struct Object

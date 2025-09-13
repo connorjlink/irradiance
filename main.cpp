@@ -21,6 +21,7 @@
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/random.hpp"
+#include "glm/gtc/quaternion.hpp"
 #include "glm/gtx/norm.hpp"
 
 #include "utility.h"
@@ -165,7 +166,8 @@ public:
         Real probability = 0.f;
     };
 
-    std::vector<MeshInstance> scene_instances;
+    std::vector<MeshInstance*> scene_instances;
+    TLAS* tlas = nullptr;
     std::vector<Emitter> emissive_objects;
 
 public:
@@ -216,10 +218,14 @@ public:
             return *previous;
         }
 
-        #pragma message("TODO this might need to be slerp() to preserve solid-angle magnitude")
-
         const auto interval = next->time - previous->time;
         const auto scalar = (timestamp - previous->time) / interval;
+
+        // NOTE: slerp didn't seem to have any discernable improvement
+        //const auto previous_quaternion = glm::quat{ glm::radians(glm::vec3{ previous->pitch, previous->yaw, 0.f }) };
+        //const auto next_quaternion = glm::quat{ glm::radians(glm::vec3{ next->pitch, next->yaw, 0.f }) };
+        //const auto interpolated_quaternion = glm::slerp(previous_quaternion, next_quaternion, scalar);
+        //const auto interpolated_euler_angles = glm::degrees(glm::eulerAngles(interpolated_quaternion));
 
         return ShutterSample
         {
@@ -314,21 +320,26 @@ public:
 
     RayIntersection compute_nearest_intersection(const Ray& ray)
     {
-        auto nearest_intersection = RayIntersection{};
-
-        for (const auto& instance : scene_instances)
+        if (tlas)
         {
-            #pragma message("TODO OPTIMIZE BY TRANSFORMING RAY ONE PER INSTANCE NOT PER SUB-OBJECT")
-
-            const auto intersection = instance.intersect(ray);
-
-            if (intersection.hit && intersection.depth < nearest_intersection.depth)
-            {
-                nearest_intersection = intersection;
-            }
+            return tlas->intersect(ray);
         }
+        else
+        {
+            auto nearest_intersection = RayIntersection{};
 
-        return nearest_intersection;
+            for (const auto& instance : scene_instances)
+            {
+                const auto intersection = instance->intersect(ray);
+
+                if (intersection.hit && intersection.depth < nearest_intersection.depth)
+                {
+                    nearest_intersection = intersection;
+                }
+            }
+
+            return nearest_intersection;
+        }
     }
 
     glm::vec3 compute_direction(Real yaw, Real pitch) const
@@ -415,8 +426,6 @@ public:
         {
             return glm::vec3{ 0.f };
         }
-
-        // TODO: bounding volume hierarchy acceleration structure
 
         const auto nearest_intersection = compute_nearest_intersection(ray);
         output_intersection = nearest_intersection;
@@ -755,7 +764,7 @@ public:
             }
         };
 
-        scene_instances.emplace_back(MeshInstance{ glm::identity<glm::mat4>(), sphere });
+        scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
 
         static const auto prism = cube(PBRMaterial
         {
@@ -767,7 +776,7 @@ public:
             .roughness = .01f,
             .transmission = .97f,
         });
-        static const auto prism_instance = MeshInstance
+        static const auto prism_instance = new MeshInstance
         {
             glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, -2.f, .5f }), glm::radians(45.f), UP),
             prism
@@ -777,9 +786,11 @@ public:
 
     #endif
 
+        tlas = new TLAS{ scene_instances };
+
         for (auto& instance : scene_instances)
         {
-            for (auto object : instance.mesh)
+            for (auto object : instance->mesh)
             {
                 if (object && object->material.emission != glm::vec3{ 0.f })
                 {
@@ -974,7 +985,7 @@ public:
             dirty = true;
         }
 
-        if (dirty)
+        if (dirty || (!dirty && last_dirty))
         {
             const auto number = ScreenWidth() * ScreenHeight();
             std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });

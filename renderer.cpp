@@ -125,7 +125,7 @@ namespace ir
 
             // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
             std::vector<Object*> sorted_objects = objects;
-            std::sort(sorted_objects.begin(), sorted_objects.end(), [axis](Object* left, Object* right)
+            std::sort(sorted_objects.begin(), sorted_objects.end(), [&](Object* left, Object* right)
             {
                 return left->centroid[axis] < right->centroid[axis];
             });
@@ -144,7 +144,7 @@ namespace ir
     {
     }
 
-    RayIntersection BLAS::intersect(const Ray& ray)
+    RayIntersection BLAS::intersect(const Ray& ray) const
     {
         if (!volume || !volume->intersects(ray))
         {
@@ -159,6 +159,16 @@ namespace ir
 
             for (const auto& object : volume->contents)
             {
+                if (!object)
+                {
+                    continue;
+                }
+
+                if (!object->bound->intersects(ray))
+                {
+                    continue;
+                }
+
                 const auto intersection = object->intersect(ray);
 
                 if (intersection.hit && intersection.depth < nearest_intersection.depth)
@@ -188,6 +198,149 @@ namespace ir
             return right_intersection;
         }
         
+        return MISS;
+    }
+
+    TLAS::TLAS(const std::vector<MeshInstance*>& meshes)
+    {
+        if (meshes.empty())
+        {
+            return;
+        }
+
+        if (meshes.size() == 1)
+        {
+            // leaf node
+            volume = meshes.front()->volume;
+            contents.push_back(meshes.front());
+            return;
+        }
+
+        // compute a bounding volume for all mesh instances
+        auto origin = glm::vec3{ std::numeric_limits<Real>::max() };
+        auto extent = glm::vec3{ std::numeric_limits<Real>::min() };
+
+        for (const auto& instance : meshes)
+        {
+            if (!instance || !instance->volume)
+            {
+                continue;
+            }
+
+            const auto bounds = instance->volume;
+            origin = glm::min(origin, bounds->origin);
+            extent = glm::max(extent, bounds->origin + bounds->size);
+        }
+
+        volume = new BoundingVolume{ origin, extent - origin };
+
+        // split along the longest axis at the median
+        const auto size = extent - origin;
+        const auto axis = size.x > size.y ? (size.x > size.z ? 0 : 2) : (size.y > size.z ? 1 : 2);
+
+        std::vector<MeshInstance*> left_instances;
+        std::vector<MeshInstance*> right_instances;
+
+        const auto midpoint = origin[axis] + size[axis] * .5f;
+
+        for (const auto& instance : meshes)
+        {
+            if (!instance || !instance->volume)
+            {
+                continue;
+            }
+
+            if (instance->volume->centroid[axis] < midpoint)
+            {
+                left_instances.push_back(instance);
+            }
+            else
+            {
+                right_instances.push_back(instance);
+            }
+        }
+
+        // handle unbalanced splits by forcing a balanced split
+        if (left_instances.empty() || right_instances.empty())
+        {
+            left_instances.clear();
+            right_instances.clear();
+
+            // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
+            std::vector<MeshInstance*> sorted_instances = meshes;
+            std::sort(sorted_instances.begin(), sorted_instances.end(), [&](MeshInstance* left, MeshInstance* right)
+            {
+                return left->volume->centroid[axis] < right->volume->centroid[axis];
+            });
+
+            const auto half = meshes.size() / 2;
+            left_instances.insert(left_instances.end(), sorted_instances.begin(), sorted_instances.begin() + half);
+            right_instances.insert(right_instances.end(), sorted_instances.begin() + half, sorted_instances.end());
+        }
+
+        left = new TLAS{ left_instances };
+        right = new TLAS{ right_instances };
+    }
+
+    TLAS::TLAS(BoundingVolume* volume, TLAS* left, TLAS* right)
+        : volume{ volume }, left{ left }, right{ right }
+    {
+    }
+
+    RayIntersection TLAS::intersect(const Ray& ray) const
+    {
+        if (!volume || !volume->intersects(ray))
+        {
+            return MISS;
+        }
+
+        if (!left && !right)
+        {
+            // leaf node, hit-test every mesh instance in this volume
+
+            auto nearest_intersection = MISS;
+
+            for (const auto& instance : contents)
+            {
+                if (!instance)
+                {
+                    continue;
+                }
+
+                if (!instance->volume->intersects(ray))
+                {
+                    continue;
+                }
+
+                const auto intersection = instance->intersect(ray);
+
+                if (intersection.hit && intersection.depth < nearest_intersection.depth)
+                {
+                    nearest_intersection = intersection;
+                }
+            }
+
+            return nearest_intersection;
+        }
+
+        // branch node, traverse children (~log2 speedup)
+
+        const auto left_intersection = left ? left->intersect(ray) : MISS;
+        const auto right_intersection = right ? right->intersect(ray) : MISS;
+
+        if (left_intersection.hit && right_intersection.hit)
+        {
+            return left_intersection.depth < right_intersection.depth ? left_intersection : right_intersection;
+        }
+        else if (left_intersection.hit)
+        {
+            return left_intersection;
+        }
+        else if (right_intersection.hit)
+        {
+            return right_intersection;
+        }
+
         return MISS;
     }
 
@@ -559,7 +712,6 @@ namespace ir
         return MISS;
     }
 
-    // TODO: proper sampling instead of random chance
     glm::vec3 Quadric::sample()
     {
         auto point = glm::vec3{};
@@ -695,10 +847,35 @@ namespace ir
             local_intersection = nearest_intersection;
         }
 
+        if (!local_intersection.hit)
+        {
+            return MISS;
+        }
+
+        const auto local_space_entry_position = local_intersection.position;
+        const auto local_space_entry = local_intersection.depth;
+        const auto local_space_exit = local_intersection.exit;
+
         // transform relevant intersection space (object local coordinates) back into world space
-        local_intersection.position = glm::vec3{ transform * glm::vec4{ local_intersection.position, 1.f } };
+
+        const auto world_space_entry_position = glm::vec3{ transform * glm::vec4{ local_space_entry_position, 1.f } };
+        local_intersection.position = world_space_entry_position;
         // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
         local_intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ local_intersection.normal, 0.f } });
+
+        local_intersection.depth = glm::length(world_space_entry_position - ray.origin);
+        if (local_space_exit != std::numeric_limits<float>::infinity())
+        {
+            const auto delta = local_space_exit - local_space_entry;
+            const auto local_space_exit_position = local_space_entry_position + delta * local_space_ray.direction;
+            const auto world_space_exit_position = glm::vec3{ transform * glm::vec4{ local_space_exit_position, 1.f } };
+            local_intersection.exit = glm::length(world_space_exit_position - ray.origin);
+        }
+
+        const auto normal_matrix = glm::transpose(inverse);
+        local_intersection.normal = glm::normalize(glm::vec3{ normal_matrix * glm::vec4{ local_intersection.normal, 0.f } });
+
+        const auto length2 = glm::dot(local_intersection.normal, local_intersection.normal);
 
         return local_intersection;
     }
