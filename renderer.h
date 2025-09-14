@@ -148,13 +148,24 @@ namespace ir
     {
     public:   
         glm::vec3 v0, v1, v2;
+        glm::vec3 n0, n1, n2;
         glm::vec2 uv0, uv1, uv2;
         glm::vec3 edge0, edge1;
         Real d00, d01, d11;
         Real denominator;
         glm::vec3 normal;
+        bool smoothed = false;
 
     public:
+        Triangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& n0, const glm::vec3& n1, const glm::vec3& n2, const glm::vec2& uv0, const glm::vec2& uv1, const glm::vec2& uv2,  const PBRMaterial& material)
+            : Triangle{ v0, v1, v2, uv0, uv1, uv2, material }
+        {
+            this->n0 = n0;
+            this->n1 = n1;
+            this->n2 = n2;
+            smoothed = true;
+        }
+
         Triangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec2& uv0, const glm::vec2& uv1, const glm::vec2& uv2, const PBRMaterial& material)
             : v0{ v0 }, v1{ v1 }, v2{ v2 }, uv0{ uv0 }, uv1{ uv1 }, uv2{ uv2 }, Object{ material }
         {

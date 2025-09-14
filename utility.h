@@ -78,6 +78,57 @@ namespace ir
 				{ return std::string_view(&*str.begin(), std::ranges::distance(str)); })
 			| std::ranges::to<std::vector<std::string>>();
 	}
+
+    template<typename T, std::size_t N>
+    class CircularBuffer
+    {
+    private:
+        std::array<T, N> data;
+        std::size_t index = 0;
+        std::size_t count = 0;
+    
+    public:
+        void push(const T& value)
+        {
+            data[index] = value;
+            index = (index + 1) % N;
+        
+            if (count < N)
+            {
+                count++;
+            }
+        }
+        
+        void reset(std::size_t new_count)
+        {
+            index = 0;
+            count = 0;
+            for (auto& item : data)
+            {
+                item = {};
+                item.resize(new_count);
+            }
+        }
+    
+        T& peek(size_t i = 0)
+        {
+            return data[(index + i) % N];
+        }
+    
+        T& at(size_t i = 0)
+        {
+            return data[i];
+        }
+    
+        std::size_t size() const
+        {
+            return count;
+        }
+    
+    public:
+        auto begin() { return data.begin(); }
+        auto end() { return data.end(); }
+    };
 }
 
 #endif

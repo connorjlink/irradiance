@@ -49,8 +49,6 @@ static constexpr Real SENSOR_HEIGHT = 35.f; // full-frame sensor mm
 
 static constexpr int FRAME_HISTORY = 5;
 
-static constexpr Real MAX_LUMINANCE = 10.f;
-
 #ifndef CORNELL
     static constexpr bool ENABLE_SKYBOX = true;
 #else
@@ -60,58 +58,6 @@ static constexpr Real MAX_LUMINANCE = 10.f;
 
 int _bounces = 2;
 int _samples = 5;
-int _captures = 1;
-
-template<typename T, std::size_t N>
-class CircularBuffer
-{
-private:
-    std::array<T, N> data;
-    std::size_t index = 0;
-    std::size_t count = 0;
-
-public:
-    void push(const T& value)
-    {
-        data[index] = value;
-        index = (index + 1) % N;
-
-        if (count < N)
-        {
-            count++;
-        }
-    }
-    
-    void reset(std::size_t new_count)
-    {
-        index = 0;
-        count = 0;
-        for (auto& item : data)
-        {
-            item = {};
-            item.resize(new_count);
-        }
-    }
-
-    T& peek(size_t i = 0)
-    {
-        return data[(index + i) % N];
-    }
-
-    T& at(size_t i = 0)
-    {
-        return data[i];
-    }
-
-    std::size_t size() const
-    {
-        return count;
-    }
-
-public:
-    auto begin() { return data.begin(); }
-    auto end() { return data.end(); }
-};
 
 class Irradiance : public olc::PixelGameEngine
 {
@@ -295,10 +241,9 @@ public:
             {
                 const auto index = x + y * ScreenWidth();
 
-                const auto hdr = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                const auto original = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
 
-                const auto tone_mapped = tonemap(hdr);
-                const auto gamma_corrected = gamma_correct(tone_mapped);
+                const auto gamma_corrected = gamma_correct(original);
 
                 const auto color = RGB
                 { 
@@ -745,17 +690,18 @@ public:
 
         static const auto utah = teapot(PBRMaterial
         {
-            .albedo = glm::vec3{ .9f, .9f, .9f },
+            .albedo = glm::vec3{ .9f, .2f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 1.f,
+            .metallicity = .8f,
             .refraction_index = 1.5f,
             .anisotropy = 0.f,
-            .roughness = .05f,
-            .transmission = 0.f,
+            .roughness = 0.f,
+            .transmission = 1.f,
+            .texture = perlin_high.get(),
         });
         static const auto utah_instance = new MeshInstance
         {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-90.f), glm::vec3{ 0.f, 1.f, 0.f }),
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
             utah
         };
         scene_instances.emplace_back(utah_instance);
@@ -763,44 +709,60 @@ public:
     #else
         scene_instances.emplace_back(cornell_box());
 
-        static const auto sphere = Mesh
-        {
-            new Sphere
-            { 
-                glm::vec3{ .5f, .6f, .5f }, 
-                .4f, 
-                PBRMaterial
-                {
-                    .albedo = glm::vec3{ .2f, .4f, .9f },
-                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = .75f,
-                    .refraction_index = .99f,
-                    .anisotropy = 0.f,
-                    .roughness = 0.f,
-                    .transmission = .02f,
-                }
-            }
-        };
+        // static const auto sphere = Mesh
+        // {
+        //     new Sphere
+        //     { 
+        //         glm::vec3{ .5f, .6f, .5f }, 
+        //         .4f, 
+        //         PBRMaterial
+        //         {
+        //             .albedo = glm::vec3{ .2f, .4f, .9f },
+        //             .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //             .metallicity = .75f,
+        //             .refraction_index = .99f,
+        //             .anisotropy = 0.f,
+        //             .roughness = 0.f,
+        //             .transmission = .02f,
+        //         }
+        //     }
+        // };
 
-        scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
+        // scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
 
-        static const auto prism = cube(PBRMaterial
+        // static const auto prism = cube(PBRMaterial
+        // {
+        //     .albedo = glm::vec3{ .9f, .9f, .1f },
+        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //     .metallicity = .1f,
+        //     .refraction_index = 2.f,
+        //     .anisotropy = 0.f,
+        //     .roughness = .01f,
+        //     .transmission = .97f,
+        // });
+        // static const auto prism_instance = new MeshInstance
+        // {
+        //     glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, -2.f, .5f }), glm::radians(45.f), UP),
+        //     prism
+        // };
+        // scene_instances.emplace_back(prism_instance);
+
+        static const auto suzanne = monkey(PBRMaterial
         {
-            .albedo = glm::vec3{ .9f, .9f, .1f },
+            .albedo = glm::vec3{ .9f, .2f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = .1f,
-            .refraction_index = 2.f,
+            .metallicity = .0f,
+            .refraction_index = 1.5f,
             .anisotropy = 0.f,
             .roughness = .01f,
             .transmission = .97f,
         });
-        static const auto prism_instance = new MeshInstance
+        static const auto monkey_instance = new MeshInstance
         {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, -2.f, .5f }), glm::radians(45.f), UP),
-            prism
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .55f }), glm::vec3{ 0.f, 0.f, 1.5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
+            suzanne
         };
-
-        scene_instances.emplace_back(prism_instance);
+        scene_instances.emplace_back(monkey_instance);
 
     #endif
 
@@ -1087,12 +1049,6 @@ public:
                 REVALIDATE(result.r);
                 REVALIDATE(result.g);
                 REVALIDATE(result.b);
-
-                if (const auto length = glm::length(result); length > MAX_LUMINANCE)
-                {
-                    result = result / length * MAX_LUMINANCE;
-                }
-
                 total_color += result;
             }
 
@@ -1199,14 +1155,6 @@ int main(int argc, char** argv)
                 if (result.success)
                 {
                     _samples = result.result;
-                }
-            }
-            else if (name == "-captures")
-            {
-                const auto result = parse_int(value);
-                if (result.success)
-                {
-                    _captures = result.result;
                 }
             }
             else if (name == "-hires")

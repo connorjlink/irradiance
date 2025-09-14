@@ -18,6 +18,7 @@ namespace
         .normal = glm::vec3{},
         .material = ir::PBRMaterial{},
         .depth = std::numeric_limits<ir::Real>::infinity(),
+        .exit = std::numeric_limits<ir::Real>::infinity(),
         .hit = false,
     };
 }
@@ -152,6 +153,7 @@ namespace ir
             // leaf node, hit-test every object in this volume
             
             auto nearest_intersection = MISS;
+            auto furthest_intersection = MISS;
 
             for (const auto& object : volume->contents)
             {
@@ -171,6 +173,15 @@ namespace ir
                 {
                     nearest_intersection = intersection;
                 }
+                if (intersection.hit && intersection.exit > furthest_intersection.exit)
+                {
+                    furthest_intersection = intersection;
+                }
+            }
+
+            if (nearest_intersection.hit && furthest_intersection.hit && nearest_intersection.exit == std::numeric_limits<Real>::infinity())
+            {
+                nearest_intersection.exit = furthest_intersection.exit;
             }
 
             return nearest_intersection;
@@ -436,12 +447,26 @@ namespace ir
 
         const auto intersection = ray.origin + ray.direction * t;
 
+        const auto w = 1.f - u - v;
+
+        auto smoothed_normal = normal;
+        if (smoothed)
+        {
+            smoothed_normal = glm::normalize(w * n0 + u * n1 + v * n2);
+
+            if (glm::dot(smoothed_normal, normal) < 0.f) 
+            {
+                smoothed_normal = -smoothed_normal;
+            }
+        }
+
         return 
         {
             .position = intersection,
-            .normal = normal,
+            .normal = smoothed_normal,
             .material = material,
             .depth = t,
+            .exit = std::numeric_limits<Real>::infinity(),
             .hit = true,
             .object = this,
             .uv = { u, v },
@@ -504,6 +529,7 @@ namespace ir
             .normal = normal,
             .material = material,
             .depth = t,
+            .exit = std::numeric_limits<Real>::infinity(),
             .hit = true,
             .object = this,
             .uv = { u, v },
@@ -852,7 +878,8 @@ namespace ir
         const auto world_space_entry_position = glm::vec3{ transform * glm::vec4{ local_space_entry_position, 1.f } };
         local_intersection.position = world_space_entry_position;
         // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-        local_intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ local_intersection.normal, 0.f } });
+        const auto normal_matrix = glm::transpose(inverse);
+        local_intersection.normal = glm::normalize(glm::vec3{ normal_matrix * glm::vec4{ local_intersection.normal, 0.f } });
 
         local_intersection.depth = glm::length(world_space_entry_position - ray.origin);
         if (local_space_exit != std::numeric_limits<float>::infinity())
@@ -879,6 +906,7 @@ namespace ir
         }
 
         std::vector<glm::vec3> vertices{};
+        std::vector<glm::vec3> normals{};
 
         std::string line;
         while (std::getline(file, line))
@@ -889,7 +917,6 @@ namespace ir
                 continue;
             }
 
-            // TODO: incorporate normals and normal smoothing as necessary
             // TODO: incorporate texture coordinates as necessary
             // TODO: incorporate material files as necessary
 
@@ -901,25 +928,72 @@ namespace ir
 
                 vertices.emplace_back(x, y, z);
             }
+            else if (tokens[0] == "vn" && tokens.size() >= 4)
+            {
+                const auto x = std::stof(tokens[1]);
+                const auto y = std::stof(tokens[2]);
+                const auto z = std::stof(tokens[3]);
+
+                normals.emplace_back(x, y, z);
+            }
             else if (tokens[0] == "f" && tokens.size() >= 4)
             {
                 if (tokens.size() == 4)
                 {
                     // triangle, 3 vertices to form the face
-                    const auto face0 = std::stoi(tokens[1]);
-                    const auto face1 = std::stoi(tokens[2]);
-                    const auto face2 = std::stoi(tokens[3]);
+                    // tokens could be v, v//n, v/t, or v/t/n
 
-                    objects.emplace_back(new Triangle
+                    auto parse_vertex_index = [&](const std::string& s, int& vi, int& ni)
+                    {
+                        vi = ni = 0;
+
+                        auto parts = split(s, "/");
+
+                        if (!parts.empty() && !parts[0].empty()) 
+                        {
+                            vi = std::stoi(parts[0]);
+                        }
+                        if (parts.size() == 3 && !parts[2].empty()) 
+                        {
+                            ni = std::stoi(parts[2]);
+                        }
+                        else if (parts.size() == 2 && !parts[1].empty()) 
+                        {
+                            ni = std::stoi(parts[1]);
+                        }
+                    };
+
+                    auto v0 = 0, v1 = 0, v2 = 0;
+                    auto n0 = 0, n1 = 0, n2 = 0;
+
+                    parse_vertex_index(tokens[1], v0, n0);
+                    parse_vertex_index(tokens[2], v1, n1);
+                    parse_vertex_index(tokens[3], v2, n2);
+
+                    auto triangle = new Triangle
                     { 
-                        vertices[face0 - 1], 
-                        vertices[face1 - 1], 
-                        vertices[face2 - 1], 
+                        vertices[v0 - 1], 
+                        vertices[v1 - 1], 
+                        vertices[v2 - 1], 
                         glm::vec2{ 0.f, 0.f }, 
                         glm::vec2{ 0.f, 1.f }, 
                         glm::vec2{ 1.f, 1.f }, 
                         default_material,
-                    });
+                    };
+
+                    const bool have_all_normals = (n0 > 0 && n1 > 0 && n2 > 0 && 
+                                                   n0 <= static_cast<int>(normals.size()) &&
+                                                   n1 <= static_cast<int>(normals.size()) &&
+                                                   n2 <= static_cast<int>(normals.size()));
+                    if (have_all_normals)
+                    {
+                        triangle->n0 = normals[n0 - 1];
+                        triangle->n1 = normals[n1 - 1];
+                        triangle->n2 = normals[n2 - 1];
+                        triangle->smoothed = true;
+                    }
+
+                    objects.emplace_back(triangle);
                 }
                 else if (tokens.size() == 5)
                 {
