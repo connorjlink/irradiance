@@ -692,12 +692,11 @@ public:
         {
             .albedo = glm::vec3{ .9f, .2f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = .8f,
+            .metallicity = .5f,
             .refraction_index = 1.5f,
             .anisotropy = 0.f,
-            .roughness = 0.f,
-            .transmission = 1.f,
-            .texture = perlin_high.get(),
+            .roughness = .02f,
+            .transmission = 0.f,
         });
         static const auto utah_instance = new MeshInstance
         {

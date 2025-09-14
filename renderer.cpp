@@ -878,8 +878,7 @@ namespace ir
         const auto world_space_entry_position = glm::vec3{ transform * glm::vec4{ local_space_entry_position, 1.f } };
         local_intersection.position = world_space_entry_position;
         // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-        const auto normal_matrix = glm::transpose(inverse);
-        local_intersection.normal = glm::normalize(glm::vec3{ normal_matrix * glm::vec4{ local_intersection.normal, 0.f } });
+        local_intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ local_intersection.normal, 0.f } });
 
         local_intersection.depth = glm::length(world_space_entry_position - ray.origin);
         if (local_space_exit != std::numeric_limits<float>::infinity())
