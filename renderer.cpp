@@ -99,7 +99,7 @@ namespace ir
         std::vector<Object*> left_objects;
         std::vector<Object*> right_objects;
 
-        const auto midpoint = origin[axis] + size[axis] * .5f;
+        const auto midpoint = volume->centroid[axis];
 
         for (const auto& object : objects)
         {
@@ -138,11 +138,6 @@ namespace ir
 
         left = new BLAS{ left_objects };
         right = new BLAS{ right_objects };
-    }
-
-    BLAS::BLAS(BoundingVolume* volume, BLAS* left, BLAS* right)
-        : volume{ volume }, left{ left }, right{ right }
-    {
     }
 
     RayIntersection BLAS::intersect(const Ray& ray) const
@@ -242,7 +237,7 @@ namespace ir
         std::vector<MeshInstance*> left_instances;
         std::vector<MeshInstance*> right_instances;
 
-        const auto midpoint = origin[axis] + size[axis] * .5f;
+        const auto midpoint = volume->centroid[axis];
 
         for (const auto& instance : meshes)
         {
@@ -281,11 +276,6 @@ namespace ir
 
         left = new TLAS{ left_instances };
         right = new TLAS{ right_instances };
-    }
-
-    TLAS::TLAS(BoundingVolume* volume, TLAS* left, TLAS* right)
-        : volume{ volume }, left{ left }, right{ right }
-    {
     }
 
     RayIntersection TLAS::intersect(const Ray& ray) const

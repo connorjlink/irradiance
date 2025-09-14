@@ -742,6 +742,24 @@ public:
 
     #ifndef CORNELL
         scene_instances.emplace_back(test_spheres());
+
+        static const auto utah = teapot(PBRMaterial
+        {
+            .albedo = glm::vec3{ .9f, .9f, .9f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 1.f,
+            .refraction_index = 1.5f,
+            .anisotropy = 0.f,
+            .roughness = .05f,
+            .transmission = 0.f,
+        });
+        static const auto utah_instance = new MeshInstance
+        {
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-90.f), glm::vec3{ 0.f, 1.f, 0.f }),
+            utah
+        };
+        scene_instances.emplace_back(utah_instance);
+
     #else
         scene_instances.emplace_back(cornell_box());
 

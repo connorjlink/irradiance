@@ -34,42 +34,69 @@ namespace ir
         bool intersects(const Ray& ray) const;
     };
 
+    struct BoundingVolumeHierarchy
+    {
+    public:
+        BoundingVolume* volume = nullptr;
+        // left = right = nullptr -> leaf
+        BoundingVolumeHierarchy* left = nullptr;
+        BoundingVolumeHierarchy* right = nullptr;
+
+    public:
+        BoundingVolumeHierarchy() = default;
+        BoundingVolumeHierarchy(BoundingVolume* volume, BoundingVolumeHierarchy* left, BoundingVolumeHierarchy* right)
+            : volume{ volume }, left{ left }, right{ right }
+        {
+        }
+
+    public:
+        virtual ~BoundingVolumeHierarchy()
+        {
+            delete volume;
+            delete left;
+            delete right;
+        }
+
+    public:
+        virtual RayIntersection intersect(const Ray& ray) const = 0;
+    };
+
     struct MeshInstance;
 
     // constructed in object space
-    struct BLAS
+    struct BLAS : public BoundingVolumeHierarchy
     {
     public:
-        BoundingVolume* volume = nullptr;
-        // left = right = nullptr -> leaf
-        BLAS* left = nullptr;
-        BLAS* right = nullptr;
-        
+        BLAS(BoundingVolume* volume, BLAS* left, BLAS* right)
+            : BoundingVolumeHierarchy{ volume, left, right }
+        {
+        }
+
     public:
         BLAS(const MeshInstance& meshes);
         BLAS(const std::vector<Object*>& objects);
-        BLAS(BoundingVolume* volume, BLAS* left, BLAS* right);
 
     public:
-        RayIntersection intersect(const Ray& ray) const;
+        RayIntersection intersect(const Ray& ray) const override;
     };
 
     // constructed in world space
-    struct TLAS
+    struct TLAS : public BoundingVolumeHierarchy
     {
     public:
-        BoundingVolume* volume = nullptr;
-        // left = right = nullptr -> leaf
-        TLAS* left = nullptr;
-        TLAS* right = nullptr;
         std::vector<MeshInstance*> contents;
 
     public:
-        TLAS(const std::vector<MeshInstance*>& meshes);
-        TLAS(BoundingVolume* volume, TLAS* left, TLAS* right);
+        TLAS(BoundingVolume* volume, TLAS* left, TLAS* right)
+            : BoundingVolumeHierarchy{ volume, left, right }
+        {
+        }
 
     public:
-        RayIntersection intersect(const Ray& ray) const;
+        TLAS(const std::vector<MeshInstance*>& meshes);
+
+    public:
+        RayIntersection intersect(const Ray& ray) const override;
     };
 
     struct Object
