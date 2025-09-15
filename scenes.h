@@ -483,7 +483,7 @@ namespace ir
                 }
             },
 
-            // floor (white)
+            // ceiling (white)
             new Quadrilateral
             {
                 glm::vec3{ -1.f, -1.f, -1.f },
@@ -499,7 +499,7 @@ namespace ir
                 }
             },
 
-            // ceiling (white)
+            // floor (white)
             new Quadrilateral
             {
                 glm::vec3{ -1.f, 1.f, -1.f },
@@ -509,9 +509,10 @@ namespace ir
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
+                    .metallicity = .8f,
                     .anisotropy = 0.f,
-                    .roughness = 1.f,
+                    .roughness = .2f,
+                    .texture = perlin_high.get(),
                 }
             },
 
@@ -540,7 +541,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .emission = glm::vec3{ 1.f },
+                    .emission = glm::vec3{ .9f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 1.f,

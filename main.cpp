@@ -86,9 +86,9 @@ private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
     bool last_dirty = false;
-    glm::vec3 position = { 0.f, 0.f, -0.95f };
+    glm::vec3 position = { 0.95f, -.5f, -0.95f };
     Real fov_degrees = 90.f;
-    Real yaw_degrees = 0.f, pitch_degrees = 0.f;
+    Real yaw_degrees = -45.f, pitch_degrees = 20.f;
     int accumulated_frames = 1;
     Ray* rays = nullptr;
     bool enable_dof = false;
@@ -235,9 +235,9 @@ public:
 
         auto rgb = new RGB[ScreenWidth() * ScreenHeight()];
 
-        for (auto x = 0; x < ScreenHeight(); x++)
+        for (auto y = 0; y < ScreenHeight(); y++)
         {
-            for (auto y = 0; y < ScreenWidth(); y++)
+            for (auto x = 0; x < ScreenWidth(); x++)
             {
                 const auto index = x + y * ScreenWidth();
 
@@ -708,57 +708,89 @@ public:
     #else
         scene_instances.emplace_back(cornell_box());
 
-        // static const auto sphere = Mesh
-        // {
-        //     new Sphere
-        //     { 
-        //         glm::vec3{ .5f, .6f, .5f }, 
-        //         .4f, 
-        //         PBRMaterial
-        //         {
-        //             .albedo = glm::vec3{ .2f, .4f, .9f },
-        //             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //             .metallicity = .75f,
-        //             .refraction_index = .99f,
-        //             .anisotropy = 0.f,
-        //             .roughness = 0.f,
-        //             .transmission = .02f,
-        //         }
-        //     }
-        // };
+        static const auto sphere = Mesh
+        {
+            new Sphere
+            { 
+                glm::vec3{ .5f, .6f, .5f }, 
+                .4f, 
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .2f, .4f, .9f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = .1f,
+                    .refraction_index = .1f,
+                    .anisotropy = 0.f,
+                    .roughness = 0.1f,
+                    .transmission = .2f,
+                }
+            }
+        };
+        scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
 
-        // scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
+        static const auto smoke = Mesh
+        {
+            new Colloid
+            {
+                2.f,
+                new Sphere 
+                {
+                    glm::vec3{ .5f, -.25f, .5f }, 
+                    .25f,
+                    PBRMaterial
+                    {
+                        .albedo = glm::vec3{ 0.f, 0.f, 0.f },
+                        .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                        .metallicity = 0.f,
+                        .refraction_index = 1.5f,
+                        .anisotropy = 0.f,
+                        .roughness = 0.f,
+                        .transmission = 0.f,
+                    }
+                }
+            }
+        };
+        scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), smoke });
 
-        // static const auto prism = cube(PBRMaterial
-        // {
-        //     .albedo = glm::vec3{ .9f, .9f, .1f },
-        //     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //     .metallicity = .1f,
-        //     .refraction_index = 2.f,
-        //     .anisotropy = 0.f,
-        //     .roughness = .01f,
-        //     .transmission = .97f,
-        // });
-        // static const auto prism_instance = new MeshInstance
-        // {
-        //     glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f }), glm::vec3{ -1.5f, -2.f, .5f }), glm::radians(45.f), UP),
-        //     prism
-        // };
-        // scene_instances.emplace_back(prism_instance);
+        static const auto prism = Mesh
+        {
+            new Cuboid
+            {
+                glm::vec3{ -.5f, .0f, -.8f },
+                glm::vec3{ .4f, .4f, .4f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .7f, 1.f, .8f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = 0.f,
+                    .refraction_index = 2.1f,
+                    .anisotropy = 0.f,
+                    .roughness = .01f,
+                    .transmission = .99f,
+                }
+            }
+        };
+
+        static const auto prism_instance = new MeshInstance
+        {
+            glm::identity<glm::mat4>(),
+            prism
+        };
+        scene_instances.emplace_back(prism_instance);
 
         static const auto suzanne = monkey(PBRMaterial
         {
-            .albedo = glm::vec3{ .9f, .2f, .9f },
+            .albedo = glm::vec3{ .7f, .2f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = .0f,
+            .metallicity = .7f,
             .refraction_index = 1.5f,
             .anisotropy = 0.f,
-            .roughness = .01f,
-            .transmission = .97f,
+            .roughness = .5f,
+            .transmission = .1f,
         });
         static const auto monkey_instance = new MeshInstance
         {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .55f }), glm::vec3{ 0.f, 0.f, 1.5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .55f }), glm::vec3{ -.75f, .75f, .75f }), glm::radians(-200.f), glm::vec3{ 1.f, .4f, 0.f }),
             suzanne
         };
         scene_instances.emplace_back(monkey_instance);
@@ -1158,11 +1190,7 @@ int main(int argc, char** argv)
             }
             else if (name == "-hires")
             {
-                const auto result = parse_int(value);
-                if (result.success && result.result != 0)
-                {
-                    hires = true;
-                }
+                hires = true;
             }
         }
     }
