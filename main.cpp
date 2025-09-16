@@ -27,6 +27,7 @@
 #include "utility.h"
 #include "renderer.h"
 #include "scenes.h"
+#include "cache.h"
 #include "meshes.h"
 
 // main.cpp
@@ -103,6 +104,9 @@ private:
 
     glm::vec3* frame_buffer = nullptr;
     std::vector<int> index_buffer;
+
+private:
+    RadianceCache cache;
 
 public:
     struct Emitter
@@ -799,10 +803,16 @@ public:
 
         tlas = new TLAS{ scene_instances };
 
+        auto world_minimum = glm::vec3{ std::numeric_limits<Real>::lowest() };
+        auto world_maximum = glm::vec3{ std::numeric_limits<Real>::max() };
+
         for (auto& instance : scene_instances)
         {
             for (auto object : instance->mesh)
             {
+                world_minimum = glm::min(world_minimum, object->bound->origin);
+                world_maximum = glm::max(world_maximum, object->bound->extent);
+
                 if (object && object->material.emission != glm::vec3{ 0.f })
                 {
                     emissive_objects.emplace_back(Emitter
@@ -814,6 +824,8 @@ public:
                 }
             }
         }
+
+        cache = RadianceCache{ world_minimum, world_maximum, .1f };
 
         for (auto& emitter : emissive_objects)
         {
@@ -1080,7 +1092,29 @@ public:
                 REVALIDATE(result.r);
                 REVALIDATE(result.g);
                 REVALIDATE(result.b);
-                total_color += result;
+
+                if (const auto cached = cache.query(intersection.position); cached.has_value())
+                {
+                    result = glm::mix(result, cached->radiance, .5f);
+                }
+                else
+                {
+                    if (intersection.hit)
+                    {
+                        auto entry = CacheEntry
+                        {
+                            .position = intersection.position,
+                            .normal = intersection.normal,
+                            .incidence = ray_jittered.direction,
+                            .radiance = result,
+                            .weight = 1.f / static_cast<Real>(_samples),
+                            .last_used = now,
+                        };
+                        cache.insert(entry);
+                    }
+
+                    total_color += result;
+                }
             }
 
             if (glm::any(glm::isinf(total_color)) || glm::any(glm::isnan(total_color))) 

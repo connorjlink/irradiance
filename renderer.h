@@ -1,10 +1,10 @@
 #ifndef IRRADIANCE_RENDERER_H
 #define IRRADIANCE_RENDERER_H
 
-#include "glm/ext/scalar_common.hpp"
-
 #include "utility.h"
 #include "olcPixelGameEngine.h"
+
+#include "glm/ext/scalar_common.hpp"
 
 // renderer.h
 // (c) 2025 Connor J. Link. All Rights Reserved.
