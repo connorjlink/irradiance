@@ -25,8 +25,8 @@ namespace ir
         glm::vec3 normal;
         glm::vec3 incidence;
         glm::vec3 radiance;
-        Real weight;
-        Real last_used;
+        Real weight = 0.f;
+        Real last_used = -std::numeric_limits<Real>::infinity();
     };
 
     class RadianceCache
@@ -44,9 +44,8 @@ namespace ir
     private:
         glm::ivec3 voxel_index(const glm::vec3& position) const
         {
-            const auto relative = (position - origin) * resolution;
-            glm::ivec3 index = glm::clamp(glm::ivec3(glm::floor(relative)), glm::ivec3(0), voxel_count - glm::ivec3(1));
-            return index;
+            const auto relative = (position - origin) / resolution;
+            return glm::ivec3(glm::floor(relative));
         }
 
         std::size_t flat_index(const glm::ivec3& voxel) const
@@ -57,20 +56,23 @@ namespace ir
     public:
         void insert(const CacheEntry& entry)
         {
-            #pragma message("TODO: abstract common error handling")
             if (glm::any(glm::lessThan(entry.position, origin)) || glm::any(glm::greaterThan(entry.position, extent))) 
             {
-                std::println("Radiance cache query position out of bounds.");
                 return;
             }
 
             const auto index = voxel_index(entry.position);
             const auto flat = flat_index(index);
 
+            if (flat >= static_cast<int>(entries.size()))
+            {
+                return;
+            }
+
             auto& current = entries[flat];
 
             // temporal blending
-            if (glm::abs(current.last_used - entry.last_used) < 1.f)
+            if (current.last_used > -std::numeric_limits<Real>::infinity())
             {
                 current.position = (current.position * current.weight + entry.position * entry.weight) / (current.weight + entry.weight);
                 current.normal = glm::normalize((current.normal * current.weight + entry.normal * entry.weight) / (current.weight + entry.weight));
@@ -91,19 +93,26 @@ namespace ir
         {
             if (glm::any(glm::lessThan(position, origin)) || glm::any(glm::greaterThan(position, extent))) 
             {
-                std::println("Radiance cache query position out of bounds.");
                 return std::nullopt;
             }
 
-            const auto voxel = glm::clamp(glm::floor((position - origin) * resolution), glm::vec3{ 0.f }, size * resolution - glm::vec3{ 1.f });
-            const auto base_index = glm::ivec3{ voxel };
+            const auto base_index = voxel_index(position);
 
             for (auto x = base_index.x - VoxelThreshold; x <= base_index.x + VoxelThreshold; x++)
             {
+                if (x < 0 || x >= voxel_count.x)
+                    continue;
+
                 for (auto y = base_index.y - VoxelThreshold; y <= base_index.y + VoxelThreshold; y++)
                 {
+                    if (y < 0 || y >= voxel_count.y)
+                        continue;
+
                     for (auto z = base_index.z - VoxelThreshold; z <= base_index.z + VoxelThreshold; z++)
                     {
+                        if (z < 0 || z >= voxel_count.z)
+                            continue;
+
                         const auto index = flat_index(glm::ivec3{ x, y, z });
 
                         if (index < 0 || index >= static_cast<int>(entries.size()))
@@ -112,7 +121,7 @@ namespace ir
                         }
 
                         const auto& entry = entries[static_cast<std::size_t>(index)];
-                        if (glm::length2(entry.position - position) < (1.f / (resolution * resolution)))
+                        if (glm::length2(entry.position - position) <= (.25f * resolution * resolution))
                         {
                             return entry;
                         }
@@ -128,9 +137,24 @@ namespace ir
         RadianceCache(const glm::vec3& origin, const glm::vec3& extent, Real resolution)
             : origin{ origin }, extent{ extent }, resolution{ resolution }
         {
-            size = (extent - origin);
-            voxel_count = glm::ivec3{ glm::ceil(size * resolution) };
-            entries.resize(static_cast<std::size_t>(voxel_count.x * voxel_count.y * voxel_count.z), {});
+            #define TESTING
+            #ifdef TESTING
+
+            this->origin = glm::vec3{ -20.f };
+            this->extent = glm::vec3{ 20.f };
+
+            #endif
+
+            size = (this->extent - this->origin);
+            voxel_count = glm::ivec3(glm::max(glm::vec3{1.f}, glm::ceil(size / this->resolution)));
+
+            const auto total =
+                static_cast<std::size_t>(voxel_count.x) *
+                static_cast<std::size_t>(voxel_count.y) *
+                static_cast<std::size_t>(voxel_count.z);
+
+            entries.clear();
+            entries.resize(total, {});
         }
     };
 }

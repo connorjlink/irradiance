@@ -104,9 +104,16 @@ private:
 
     glm::vec3* frame_buffer = nullptr;
     std::vector<int> index_buffer;
+    std::vector<glm::vec2> xy_buffer;
+    std::vector<glm::vec2> uv_buffer;
+    std::vector<glm::vec2> ndc_buffer;
+    glm::vec2 reciprocal_dimensions;
 
 private:
     RadianceCache cache;
+    std::size_t cache_hits = 0;
+    std::size_t total_queries = 1;
+    Real cache_timer = 0.f;
 
 public:
     struct Emitter
@@ -547,7 +554,7 @@ public:
                 #define ENABLE_COSINE_SAMPLING
                 #ifdef ENABLE_COSINE_SAMPLING
 
-                const auto disk = glm::diskRand(1.f);
+                auto disk = glm::diskRand(1.f);
                 const auto z = glm::sqrt(glm::clamp(1.f - disk.x * disk.x - disk.y * disk.y, 0.f, 1.f));
 
                 const auto local_coodinates = glm::vec3{ disk.x, disk.y, z };
@@ -679,9 +686,32 @@ public:
         frame_buffer = new glm::vec3[number];
         std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
 
-        // precompute an index sequence to be used for the parallelized for_each render loop
         index_buffer.resize(number, 0);
         std::iota(index_buffer.begin(), index_buffer.end(), 0);
+
+        xy_buffer.resize(number, { 0, 0 });
+        for (auto i = 0; i < number; i++)
+        {
+            const auto x = static_cast<Real>(i % ScreenWidth());
+            const auto y = static_cast<Real>(i / ScreenWidth());
+            xy_buffer[i] = { x, y };
+        }
+
+        uv_buffer.resize(number, { 0, 0 });
+        for (auto i = 0; i < number; i++)
+        {
+            const auto xy = xy_buffer[i];
+            uv_buffer[i] = { xy.x / ScreenWidth(), xy.y / ScreenHeight() };
+        }
+
+        ndc_buffer.resize(number, { 0, 0 });
+        for (auto i = 0; i < number; i++)
+        {
+            const auto uv = uv_buffer[i];
+            ndc_buffer[i] = { 2.f * uv.x - 1.f, 2.f * uv.y - 1.f };
+        }
+
+        reciprocal_dimensions = { 1.f / ScreenWidth(), 1.f / ScreenHeight() };
 
         shutter_speed = SHUTTER_SPEEDS[shutter_index];
         shutter_history = {};
@@ -708,6 +738,30 @@ public:
             utah
         };
         scene_instances.emplace_back(utah_instance);
+
+        // NOTE: for radiance cache testing only!!
+        // scene_instances.emplace_back(new MeshInstance
+        // {
+        //     glm::identity<glm::mat4>(),
+        //     Mesh
+        //     {
+        //         new Cuboid 
+        //         {
+        //             glm::vec3{ -20.f },
+        //             glm::vec3{ 40.f, 40.f, 40.f },
+        //             PBRMaterial
+        //             {
+        //                 .albedo = glm::vec3{ .9f, .0f, .0f },
+        //                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //                 .metallicity = 0.f,
+        //                 .refraction_index = 1.5f,
+        //                 .anisotropy = 0.f,
+        //                 .roughness = .5f,
+        //                 .transmission = .99f,
+        //             }
+        //         }
+        //     }
+        // });
 
     #else
         scene_instances.emplace_back(cornell_box());
@@ -803,16 +857,16 @@ public:
 
         tlas = new TLAS{ scene_instances };
 
-        auto world_minimum = glm::vec3{ std::numeric_limits<Real>::lowest() };
-        auto world_maximum = glm::vec3{ std::numeric_limits<Real>::max() };
+        auto world_minimum = glm::vec3{ std::numeric_limits<Real>::max() };
+        auto world_maximum = glm::vec3{ std::numeric_limits<Real>::lowest() };
 
-        for (auto& instance : scene_instances)
+        for (auto instance : scene_instances)
         {
+            world_minimum = glm::min(world_minimum, instance->volume->origin);
+            world_maximum = glm::max(world_maximum, instance->volume->extent);
+
             for (auto object : instance->mesh)
             {
-                world_minimum = glm::min(world_minimum, object->bound->origin);
-                world_maximum = glm::max(world_maximum, object->bound->extent);
-
                 if (object && object->material.emission != glm::vec3{ 0.f })
                 {
                     emissive_objects.emplace_back(Emitter
@@ -825,7 +879,7 @@ public:
             }
         }
 
-        cache = RadianceCache{ world_minimum, world_maximum, .1f };
+        cache = RadianceCache{ world_minimum, world_maximum, .5f };
 
         for (auto& emitter : emissive_objects)
         {
@@ -1015,6 +1069,15 @@ public:
             accumulated_frames = 1;
         }
 
+        cache_timer += fElapsedTime;
+        if (cache_timer > 2.f)
+        {
+            cache_timer = 0.f;
+            std::println("Cache hit rate: {} / {} = {:.2f}%", cache_hits, total_queries, total_queries > 0 ? (static_cast<Real>(cache_hits) / static_cast<Real>(total_queries)) * 100.f : 0.f);
+            cache_hits = 0;
+            total_queries = 0;
+        }
+
         now += fElapsedTime;
         capture_shutter(now);
 
@@ -1024,103 +1087,116 @@ public:
         const auto projection = glm::perspective(fov_radians, aspect_ratio, .1f, 1000.f);
         const auto inverse_projection = glm::inverse(projection);
 
+        const auto current_direction = compute_direction(yaw_degrees, pitch_degrees);
+        const auto current_view = glm::lookAt(position, position + current_direction, UP);
+        const auto current_inverse_view = glm::inverse(current_view);
+        
+        auto uv_to_view_space = [&](Real ndc_x, Real ndc_y)
+        {
+            const auto clip_space = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
+            const auto homogenous_space = inverse_projection * clip_space;
+            const auto world_space = homogenous_space / homogenous_space.w;
+
+            return glm::vec4{ glm::normalize(glm::vec3{ world_space }), 0.f };
+        };
+
         // PARALLELIZE
         
         std::for_each(std::execution::par, index_buffer.begin(), index_buffer.end(), [&](int i)
         {
-            const auto x = static_cast<Real>(i % ScreenWidth());
-            const auto y = static_cast<Real>(i / ScreenWidth());
+            const auto x = xy_buffer[i].x;
+            const auto y = xy_buffer[i].y;
 
-            const auto u = x / ScreenWidth();
-            const auto v = y / ScreenHeight();
-
-            // normalized device coordinates
-            const auto ndc_x = 2.f * u - 1.f;
-            const auto ndc_y = 2.f * v - 1.f;
-
-            const auto clip_space_position = glm::vec4{ ndc_x, ndc_y, 1.f, 1.f };
-            const auto world_space_position_homogeneous = inverse_projection * clip_space_position;
-            const auto world_space_position = world_space_position_homogeneous / world_space_position_homogeneous.w;
-            const auto view_direction = glm::vec4{ glm::normalize(glm::vec3{ world_space_position }), 0.f };
-
-            const auto current_direction = compute_direction(yaw_degrees, pitch_degrees);
-            const auto current_view = glm::lookAt(position, position + current_direction, UP);
-            const auto current_inverse_view = glm::inverse(current_view);
-            const auto current_world_space_direction = current_inverse_view * view_direction;
+            const auto ndc_x = ndc_buffer[i].x;
+            const auto ndc_y = ndc_buffer[i].y;
 
             // correct the ray coordinate space for accurate focus click distance
-            rays[i] = Ray{ position, glm::normalize(glm::vec3{ current_world_space_direction }), 0.f };
+            const auto view_space_direction = uv_to_view_space(ndc_x, ndc_y);
+            const auto world_space_direction = current_inverse_view * view_space_direction;
+            rays[i] = Ray{ position, glm::normalize(glm::vec3{ world_space_direction }), 0.f };
 
-            auto total_color = glm::vec3{ 0.f, 0.f, 0.f };
+            auto total_color = glm::vec3{ 0.f };
 
-            for (int s = 0; s < _samples; s++)
+            for (auto s = 0; s < _samples; s++)
             {
                 // centered shutter interval over the current frame, interpolate according to frametime
                 const auto timestamp = glm::linearRand(now - shutter_speed, now);
                 const auto then = sample_shutter(timestamp);
                 rays[i].timestamp = timestamp - now;
 
-                const auto interpolated_yaw = then.yaw;
-                const auto interpolated_pitch = then.pitch;
-                const auto interpolated_position = then.position;
-
-                const auto interpolated_direction = compute_direction(interpolated_yaw, interpolated_pitch);
-                const auto interpolated_view = glm::lookAt(interpolated_position, interpolated_position + interpolated_direction, UP);
+                const auto interpolated_direction = compute_direction(then.yaw, then.pitch);
+                const auto interpolated_view = glm::lookAt(then.position, then.position + interpolated_direction, UP);
                 const auto interpolated_inverse_view = glm::inverse(interpolated_view);
 
-                const auto interpolated_world_space_direction = interpolated_inverse_view * view_direction;
-                
-                const auto interpolated_ray = Ray{ interpolated_position, glm::normalize(glm::vec3{ interpolated_world_space_direction }), timestamp };
+                const auto interpolated_world_space_direction = interpolated_inverse_view * view_space_direction;
+                const auto interpolated_ray = Ray
+                {
+                    then.position,
+                    glm::normalize(glm::vec3{ interpolated_world_space_direction }),
+                    timestamp
+                };
 
-                // using linear to avoid biasing sampling toward the center of each pixel
-                auto ray_jittered = interpolated_ray;
-                ray_jittered.direction += glm::linearRand(glm::vec3{ -SAMPLE_JITTER, -SAMPLE_JITTER, -SAMPLE_JITTER }, glm::vec3{ SAMPLE_JITTER, SAMPLE_JITTER, SAMPLE_JITTER });
-                ray_jittered.direction = glm::normalize(ray_jittered.direction);
+                const auto u_jittered = (x + !dirty * glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.x;
+                const auto v_jittered = (y + !dirty * glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.y;
+
+                const auto ndc_x_jittered = 2.f * u_jittered - 1.f;
+                const auto ndc_y_jittered = 2.f * v_jittered - 1.f;
+
+                const auto interpolated_view_space_direction = uv_to_view_space(ndc_x_jittered, ndc_y_jittered);
+                const auto interpolated_world_space_direction_jittered = interpolated_inverse_view * interpolated_view_space_direction;
+
+                auto jittered_ray = Ray
+                {
+                    then.position,
+                    glm::normalize(glm::vec3{ interpolated_world_space_direction_jittered }),
+                    timestamp
+                };
 
                 if (enable_dof)
                 {
                     const auto disk_sample = glm::diskRand(aperture_radius);
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
-                    ray_jittered.origin += compute_right(interpolated_yaw, interpolated_pitch) * disk_sample.x + UP * disk_sample.y;
+                    jittered_ray.origin += compute_right(then.yaw, then.pitch) * disk_sample.x + UP * disk_sample.y;
                     // NOTE: rays do not arrive to the camera parallel to the sensor, so must compute the corresponding focal point in world space first                    
                     const auto focal_point = interpolated_ray.origin + interpolated_ray.direction * focal_distance;
-                    ray_jittered.direction = glm::normalize(focal_point - ray_jittered.origin);
+                    jittered_ray.direction = glm::normalize(focal_point - jittered_ray.origin);
                 }
 
                 auto intersection = RayIntersection{};
-                auto result = trace(ray_jittered, _bounces, intersection);
+                auto result = trace(jittered_ray, _bounces, intersection);
                 REVALIDATE(result.r);
                 REVALIDATE(result.g);
                 REVALIDATE(result.b);
 
-                if (const auto cached = cache.query(intersection.position); cached.has_value())
+                if (intersection.hit)
                 {
-                    result = glm::mix(result, cached->radiance, .5f);
-                }
-                else
-                {
-                    if (intersection.hit)
+                    total_queries++;
+
+                    if (const auto cached = cache.query(intersection.position); cached.has_value())
                     {
-                        auto entry = CacheEntry
+                        total_color += cached->radiance;
+                        cache_hits++;
+                    }
+                    else
+                    {
+                        total_color += result;
+
+                        cache.insert(CacheEntry
                         {
                             .position = intersection.position,
                             .normal = intersection.normal,
-                            .incidence = ray_jittered.direction,
+                            .incidence = jittered_ray.direction,
                             .radiance = result,
                             .weight = 1.f / static_cast<Real>(_samples),
                             .last_used = now,
-                        };
-                        cache.insert(entry);
+                        });
                     }
-
+                }
+                else
+                {
                     total_color += result;
                 }
             }
-
-            if (glm::any(glm::isinf(total_color)) || glm::any(glm::isnan(total_color))) 
-            {
-                total_color = glm::vec3{ 0.f };
-            } 
 
             total_color /= static_cast<Real>(_samples);
 
@@ -1178,7 +1254,7 @@ ParseResult parse_int(const std::string& input)
 
 int main(int argc, char** argv)
 {
-    int width = 500, height = 500;
+    int width = 300, height = 300;
 
     auto hires = false;
 
@@ -1229,7 +1305,7 @@ int main(int argc, char** argv)
         }
     }
 
-    const auto PPP = hires ? 1 : 3;
+    const auto PPP = hires ? 1 : 2;
 
 	Irradiance application{};
 	if (application.Construct(width, height, PPP, PPP, false, false, false, false) == olc::OK)
