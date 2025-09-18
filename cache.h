@@ -35,6 +35,7 @@ namespace ir
         glm::vec3 origin;
         glm::vec3 extent;
         glm::vec3 size;
+        glm::ivec3 voxel_count;
         Real resolution;
     
     private:
@@ -43,12 +44,14 @@ namespace ir
     private:
         glm::ivec3 voxel_index(const glm::vec3& position) const
         {
-            return glm::clamp(glm::ivec3{ glm::floor((position - origin) * resolution) }, glm::ivec3{ 0 }, glm::ivec3{ size * resolution } - glm::ivec3{ 1 });
+            const auto relative = (position - origin) * resolution;
+            glm::ivec3 index = glm::clamp(glm::ivec3(glm::floor(relative)), glm::ivec3(0), voxel_count - glm::ivec3(1));
+            return index;
         }
 
         std::size_t flat_index(const glm::ivec3& voxel) const
         {
-            return static_cast<std::size_t>(voxel.x + voxel.y * static_cast<int>(size.x) + voxel.z * static_cast<int>(size.x) * static_cast<int>(size.y));
+            return static_cast<std::size_t>(voxel.x + voxel.y * voxel_count.x + voxel.z * voxel_count.x * voxel_count.y);
         }
 
     public:
@@ -126,8 +129,8 @@ namespace ir
             : origin{ origin }, extent{ extent }, resolution{ resolution }
         {
             size = (extent - origin);
-            const auto voxels = size * resolution;
-            entries.resize(static_cast<std::size_t>(voxels.x * voxels.y * voxels.z), {});
+            voxel_count = glm::ivec3{ glm::ceil(size * resolution) };
+            entries.resize(static_cast<std::size_t>(voxel_count.x * voxel_count.y * voxel_count.z), {});
         }
     };
 }
