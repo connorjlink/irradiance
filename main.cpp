@@ -1168,6 +1168,9 @@ public:
                 REVALIDATE(result.g);
                 REVALIDATE(result.b);
 
+                //#define ENABLE_RADIANCE_CACHE
+                #ifdef ENABLE_RADIANCE_CACHE
+
                 if (intersection.hit)
                 {
                     total_queries++;
@@ -1196,6 +1199,11 @@ public:
                 {
                     total_color += result;
                 }
+                #else 
+                
+                total_color += result;
+
+                #endif
             }
 
             total_color /= static_cast<Real>(_samples);
