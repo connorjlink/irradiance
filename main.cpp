@@ -316,7 +316,7 @@ public:
         return glm::normalize(glm::cross(direction, UP));
     }
 
-    glm::vec2 compute_skybox_uv_coordinates(const glm::vec3& direction) const
+    glm::vec2   compute_skybox_uv_coordinates(const glm::vec3& direction) const
     {
         const auto theta = glm::atan(direction.z, direction.x);
         const auto phi = glm::acos(-direction.y); 

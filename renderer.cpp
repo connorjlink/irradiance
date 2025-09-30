@@ -686,23 +686,31 @@ namespace ir
             const auto t1 = (-b - glm::sqrt(d)) / (2.f * a);
             const auto t2 = (-b + glm::sqrt(d)) / (2.f * a);
 
-            const auto entry = glm::min(t1, t2);
-            const auto exit = glm::max(t1, t2);
-
-            if (t1 > 0.f)
+            if (t1 > 0.f || t2 > 0.f)
             {
-                const auto intersection = ray.origin + ray.direction * t1;
+                auto intersection = ray.origin + ray.direction * t1;
                 auto normal = normal_of(intersection);
 
-                // effectively clamp the quadric surface to the corresponding clip cube
-                if (glm::any(glm::lessThan(intersection, container->origin)) || 
-                    glm::any(glm::greaterThan(intersection, container->origin + container->size)))
+                auto is_invalid = [&](const auto& intersection) 
                 {
-                    return MISS;
+                    return glm::any(glm::lessThan(intersection, container->origin)) || 
+                           glm::any(glm::greaterThan(intersection, container->origin + container->size));
+                };
+
+
+                // effectively clamp the quadric surface to the corresponding clip cube
+                // NOTE: to fix back face collision, the intersection must be tested again against the back face collision (likely two hits per ray for generic quadrics)
+                if (is_invalid(intersection))
+                {
+                    intersection = ray.origin + ray.direction * t2;
+
+                    if (is_invalid(intersection))
+                    {
+                        return MISS;
+                    }
                 }
 
-                // TODO: why doesn't this fix the back-face not rendering?
-                if (glm::dot(normal, ray.direction) > 0.f)
+                if (glm::dot(normal, ray.direction) < 0.f)
                 {
                     normal = -normal;
                 }
@@ -717,8 +725,8 @@ namespace ir
                     .position = intersection,
                     .normal = normal,
                     .material = material,
-                    .depth = entry,
-                    .exit = exit,
+                    .depth = t1,
+                    .exit = t2,
                     .hit = true,
                     .object = this,
                     .uv = { u, v },
@@ -839,7 +847,7 @@ namespace ir
                 const auto intersection = object->intersect(local_space_ray);
                 if (intersection.hit)
                 {
-                    // TODO: ask Shaeffer why these are not required (produce shadow artifacts)
+                    // NOTE: not required to compute the world space position here because the BLAS intersection runs in this model space
                     // const auto entry_position = intersection.position;
                     // const auto exit_position = intersection.position + ray_transformed.direction * (intersection.exit - intersection.depth);
                     // intersection.depth = glm::length(glm::vec3{ instance.transform * glm::vec4{ entry_position, 1.f } } - ray.origin);
@@ -980,7 +988,7 @@ namespace ir
                         default_material,
                     };
 
-                    const bool have_all_normals = (n0 > 0 && n1 > 0 && n2 > 0 && 
+                    const auto have_all_normals = (n0 > 0 && n1 > 0 && n2 > 0 && 
                                                    n0 <= static_cast<int>(normals.size()) &&
                                                    n1 <= static_cast<int>(normals.size()) &&
                                                    n2 <= static_cast<int>(normals.size()));
