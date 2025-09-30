@@ -28,6 +28,9 @@ namespace ir
 
     struct PBRMaterial
     {
+        /* ONLY NEEDED FOR .OBJ FILE LOADING FOR MTL BACK-REFERENCE */
+        std::string name;
+
         /* base color RGB */
         /* falloff-absorb toward color RGB in dielectrics */
         glm::vec3 albedo;

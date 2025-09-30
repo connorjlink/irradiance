@@ -914,6 +914,14 @@ namespace ir
 
         std::vector<glm::vec3> vertices{};
         std::vector<glm::vec3> normals{};
+        std::vector<glm::vec2> texture_coordinates{};
+
+        std::vector<PBRMaterial> materials{};
+
+        // NOTE: for simplicity, ignore groups and objects
+        // NOTE: for simplicity, always assume "s 1" to avoid having to track per group or object
+
+        #pragma message("TODO: replace stof() with proper charconv parser")
 
         std::string line;
         while (std::getline(file, line))
@@ -1019,7 +1027,101 @@ namespace ir
                         default_material,
                     });
                 }
-                
+            }
+            else if (tokens[0] == "usemtl")
+            {
+                const auto& material_name = tokens[1];
+                #error "TODO: implement material usage"
+            }
+            else if (tokens[0] == "mtllib")
+            {
+                const auto& material_library = tokens[1];
+
+                std::ifstream material_file(material_library);
+                if (!material_file.good())
+                {
+                    continue;
+                }
+
+                std::optional<PBRMaterial> material{};
+
+                std::string material_line{};
+                while (std::getline(material_file, material_line))
+                {
+                    const auto material_tokens = split(material_line, " ");
+                    if (material_tokens.empty())
+                    {
+                        continue;
+                    }
+
+                    // NOTE: for simplicity, ignoring Ka, Tf, 
+
+                    if (material_tokens[0] == "newmtl")
+                    {
+                        if (material.has_value())
+                        {
+                            materials.push_back(material.value());
+                        }
+
+                        if (material_tokens.size() >= 2)
+                        {
+                            material = PBRMaterial{};
+                            material->name = material_tokens[1];
+                        }
+                        else
+                        {
+                            material = std::nullopt;
+                        }
+                    }
+                    else if (material_tokens[0] == "Kd")
+                    {
+                        // albedo/diffuse colorization
+
+                        if (material_tokens.size() >= 4)
+                        {
+                            const auto r = std::stof(material_tokens[1]);
+                            const auto g = std::stof(material_tokens[2]);
+                            const auto b = std::stof(material_tokens[3]);
+
+                            if (material.has_value())
+                            {
+                                material->albedo = glm::clamp(glm::vec3{ r, g, b }, glm::vec3{ 0.f }, glm::vec3{ 1.f });
+                            }
+                        }
+                    }
+                    else if (material_tokens[0] == "map_Kd")
+                    {
+                        // albedo/diffuse texture mapping
+                    }
+                    else if (material_tokens[0] == "Ks")
+                    {
+
+                    }
+                    else if (material_tokens[0] == "Ns")
+                    {
+
+                    }
+                    else if (material_tokens[0] == "d" || material_tokens[0] == "Tr")
+                    {
+
+                    }
+                    else if (material_tokens[0] == "illum")
+                    {
+
+                    }
+                    else if (material_tokens[0] == "Ni")
+                    {
+                        if (material_tokens.size() >= 2)
+                        {
+                            const auto refraction_index = std::stof(material_tokens[1]);
+                            if (material.has_value())
+                            {
+                                material->refraction_index = refraction_index;
+                            }
+                        }
+                    }
+                }
+
             }
         }
 

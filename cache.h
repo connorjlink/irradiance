@@ -116,15 +116,11 @@ namespace ir
                         const auto index = flat_index(glm::ivec3{ x, y, z });
 
                         if (index < 0 || index >= static_cast<int>(entries.size()))
-                        {
                             continue;
-                        }
 
                         const auto& entry = entries[static_cast<std::size_t>(index)];
                         if (glm::length2(entry.position - position) <= (.25f * resolution * resolution))
-                        {
                             return entry;
-                        }
                     }
                 }
             }

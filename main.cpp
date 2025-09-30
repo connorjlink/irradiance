@@ -486,7 +486,7 @@ public:
                 #endif
                 
                 ray.origin = nearest_intersection.position + normal * .001f;
-                // TODO: sample according to roughness and anisotropy
+                // FUTURE: sample according to roughness and anisotropy (need surface anisotropy tangent basis, e.g., metal grain)
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
                 absorption = specular * albedo;
@@ -507,7 +507,7 @@ public:
                 #endif
 
                 ray.origin = nearest_intersection.position + normal * .001f;
-                // TODO: sample according to roughness and anisotropy
+                // FUTURE: sample according to roughness and anisotropy (need surface anisotropy tangent basis, e.g., metal grain)
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
 
                 absorption = specular * glm::vec3{ mat.transmission };
