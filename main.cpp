@@ -347,8 +347,7 @@ public:
         const auto angle2 = angle * angle;
 
         const auto scalar = (angle2 * (roughness4 - 1.f) + 1.f);
-        auto denominator = glm::pi<Real>() * scalar * scalar;
-        REVALIDATE(denominator);
+        const auto denominator = glm::pi<Real>() * scalar * scalar;
 
         return roughness4 / denominator;
     }
@@ -368,10 +367,8 @@ public:
 
         const auto k = (roughness + 1.f) * (roughness + 1.f) / 8.f;
 
-        auto G1_light = light_angle / (light_angle * (1.f - k) + k);
-        REVALIDATE(G1_light);
-        auto G1_view = view_angle / (view_angle * (1.f - k) + k);
-        REVALIDATE(G1_view);
+        const auto G1_light = light_angle / (light_angle * (1.f - k) + k);
+        const auto G1_view = view_angle / (view_angle * (1.f - k) + k);
 
         return G1_light * G1_view;
     }
@@ -384,7 +381,10 @@ public:
         }
 
         const auto nearest_intersection = compute_nearest_intersection(ray);
-        output_intersection = nearest_intersection;
+        if (bounces == _bounces && nearest_intersection.hit)
+        {
+            output_intersection = nearest_intersection;
+        }
 
         if (nearest_intersection.hit)
         {
@@ -461,10 +461,7 @@ public:
                 const auto reflection_angle = glm::max(0.f, glm::dot(normal, R));
                 const auto view_angle = glm::max(0.f, glm::dot(normal, V));
 
-                auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
-                REVALIDATE(ggx.x);
-                REVALIDATE(ggx.y);
-                REVALIDATE(ggx.z);
+                const auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
 
                 return ggx;
             };
@@ -636,12 +633,7 @@ public:
                     const auto occlusion = compute_nearest_intersection(light_ray);
                     if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
-                        auto result = absorption * radiance * geometry / (weight * pdf);
-                        REVALIDATE(result.r);
-                        REVALIDATE(result.g);
-                        REVALIDATE(result.b);
-                        
-                        path += result;
+                        path += absorption * radiance * geometry / (weight * pdf);
                     }
                 }
             }
@@ -649,7 +641,7 @@ public:
             
             // STANDARD PATH TERMINATION
             {
-                path += absorption * trace(ray, bounces - 1, output_intersection) / weight;;
+                path += absorption * trace(ray, bounces - 1, output_intersection) / weight;
             }
 
             return path;
@@ -1124,6 +1116,8 @@ public:
                 const auto then = sample_shutter(timestamp);
                 rays[i].timestamp = timestamp - now;
 
+                // view_space = inverse_projection * homogenized NDC (clip_space)
+                // world_space = inverse_view * view_space
                 const auto interpolated_direction = compute_direction(then.yaw, then.pitch);
                 const auto interpolated_view = glm::lookAt(then.position, then.position + interpolated_direction, UP);
                 const auto interpolated_inverse_view = glm::inverse(interpolated_view);
@@ -1164,9 +1158,10 @@ public:
 
                 auto intersection = RayIntersection{};
                 auto result = trace(jittered_ray, _bounces, intersection);
-                REVALIDATE(result.r);
-                REVALIDATE(result.g);
-                REVALIDATE(result.b);
+
+                // REVALIDATE(result.r);
+                // REVALIDATE(result.g);
+                // REVALIDATE(result.b);
 
                 //#define ENABLE_RADIANCE_CACHE
                 #ifdef ENABLE_RADIANCE_CACHE
