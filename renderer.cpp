@@ -102,40 +102,17 @@ namespace ir
 
         const auto midpoint = volume->centroid[axis];
 
-        for (const auto& object : objects)
-        {
-            if (!object)
-            {
-                continue;
-            }
-
-            if (object->centroid[axis] < midpoint)
-            {
-                left_objects.push_back(object);
-            }
-            else
-            {
-                right_objects.push_back(object);
-            }
-        }
-
+        // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
         // handle unbalanced splits by forcing a balanced split
-        if (left_objects.empty() || right_objects.empty())
+        std::vector<Object*> sorted_objects = objects;
+        std::sort(sorted_objects.begin(), sorted_objects.end(), [&](Object* left, Object* right)
         {
-            left_objects.clear();
-            right_objects.clear();
+            return left->centroid[axis] < right->centroid[axis];
+        });
 
-            // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
-            std::vector<Object*> sorted_objects = objects;
-            std::sort(sorted_objects.begin(), sorted_objects.end(), [&](Object* left, Object* right)
-            {
-                return left->centroid[axis] < right->centroid[axis];
-            });
-
-            const auto half = objects.size() / 2;
-            left_objects.insert(left_objects.end(), sorted_objects.begin(), sorted_objects.begin() + half);
-            right_objects.insert(right_objects.end(), sorted_objects.begin() + half, sorted_objects.end());
-        }
+        const auto half = objects.size() / 2;
+        left_objects.insert(left_objects.end(), sorted_objects.begin(), sorted_objects.begin() + half);
+        right_objects.insert(right_objects.end(), sorted_objects.begin() + half, sorted_objects.end());
 
         left = new BLAS{ left_objects };
         right = new BLAS{ right_objects };
@@ -250,40 +227,16 @@ namespace ir
 
         const auto midpoint = volume->centroid[axis];
 
-        for (const auto& instance : meshes)
-        {
-            if (!instance || !instance->volume)
-            {
-                continue;
-            }
-
-            if (instance->volume->centroid[axis] < midpoint)
-            {
-                left_instances.push_back(instance);
-            }
-            else
-            {
-                right_instances.push_back(instance);
-            }
-        }
-
+        // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
         // handle unbalanced splits by forcing a balanced split
-        if (left_instances.empty() || right_instances.empty())
+        std::vector<MeshInstance*> sorted_instances = meshes;
+        std::sort(sorted_instances.begin(), sorted_instances.end(), [&](MeshInstance* left, MeshInstance* right)
         {
-            left_instances.clear();
-            right_instances.clear();
-
-            // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
-            std::vector<MeshInstance*> sorted_instances = meshes;
-            std::sort(sorted_instances.begin(), sorted_instances.end(), [&](MeshInstance* left, MeshInstance* right)
-            {
-                return left->volume->centroid[axis] < right->volume->centroid[axis];
-            });
-
-            const auto half = meshes.size() / 2;
-            left_instances.insert(left_instances.end(), sorted_instances.begin(), sorted_instances.begin() + half);
-            right_instances.insert(right_instances.end(), sorted_instances.begin() + half, sorted_instances.end());
-        }
+            return left->volume->centroid[axis] < right->volume->centroid[axis];
+        });
+        const auto half = meshes.size() / 2;
+        left_instances.insert(left_instances.end(), sorted_instances.begin(),sorted_instances.begin() + half);
+        right_instances.insert(right_instances.end(), sorted_instances.begin() + half,sorted_instances.end());
 
         left = new TLAS{ left_instances };
         right = new TLAS{ right_instances };
@@ -1031,7 +984,7 @@ namespace ir
             else if (tokens[0] == "usemtl")
             {
                 const auto& material_name = tokens[1];
-                #error "TODO: implement material usage"
+                //#error "TODO: implement material usage"
             }
             else if (tokens[0] == "mtllib")
             {

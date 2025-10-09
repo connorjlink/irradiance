@@ -11,6 +11,9 @@
 
 namespace ir
 {
+    static constexpr float EPSILON_F = .001f;
+    static const glm::vec3 EPSILON = glm::vec3{ EPSILON_F, EPSILON_F, EPSILON_F };
+
     struct BoundingVolume
     {
     public:
@@ -135,7 +138,10 @@ namespace ir
         {
             area = 4.f * glm::pi<Real>() * radius * radius;
             centroid = center;
-            bound = new BoundingVolume{ center - glm::vec3{ radius }, glm::vec3{ 2.f * radius }, { this } };
+
+            const auto origin = center - glm::vec3{ radius } - EPSILON;
+            const auto scissor = glm::vec3{ 2.f * radius } + (EPSILON * 2.f);
+            bound = new BoundingVolume{ origin, scissor, { this } };
         }
 
     public:
@@ -181,8 +187,8 @@ namespace ir
             area = .5f * glm::length(glm::cross(edge0, edge1));
             centroid = (v0 + v1 + v2) / 3.f;
 
-            const auto origin = glm::min(v0, v1, v2);
-            const auto scissor = glm::max(v0, v1, v2) - origin;
+            const auto origin = glm::min(v0, v1, v2) - EPSILON;
+            const auto scissor = glm::max(v0, v1, v2) - origin + (EPSILON * 2.f);
             bound = new BoundingVolume{ origin, scissor, { this } };
         }
 
@@ -218,8 +224,8 @@ namespace ir
             // parallelogram centroid: r0 + (u + v) / 2
             centroid = v0 + (this->v1 + this->v2) / 2.f;
 
-            const auto origin = glm::min(v0, v1, v2);
-            const auto scissor = glm::max(v0, v1, v2) - origin;
+            const auto origin = glm::min(v0, v1, v2) - EPSILON;
+            const auto scissor = glm::max(v0, v1, v2) - origin + (EPSILON * 2.f);
             bound = new BoundingVolume{ origin, scissor, { this } };
         }
     
@@ -339,7 +345,10 @@ namespace ir
                 world_space_maximum = glm::max(world_space_maximum, glm::vec3{ transform * glm::vec4{ bounds->origin + bounds->size, 1.f } });
             }
 
-            volume = new BoundingVolume{ world_space_minimum, world_space_maximum - world_space_minimum, mesh };
+            const auto origin = world_space_minimum - EPSILON;
+            const auto scissor = world_space_maximum - world_space_minimum + (EPSILON * 2.f);
+
+            volume = new BoundingVolume{ origin, scissor, mesh };
 
             blas = new BLAS{ mesh };
         }

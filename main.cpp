@@ -48,7 +48,7 @@ static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
 
 static constexpr Real SENSOR_HEIGHT = 35.f; // full-frame sensor mm
 
-static constexpr int FRAME_HISTORY = 5;
+static constexpr int FRAME_HISTORY = 1;
 
 #ifndef CORNELL
     static constexpr bool ENABLE_SKYBOX = true;
@@ -110,10 +110,28 @@ private:
     glm::vec2 reciprocal_dimensions;
 
 private:
+    struct Reprojection
+    {
+        Ray ray;
+        glm::vec3 position;
+        glm::vec3 normal;
+        Real depth;
+        glm::vec3 color;
+        bool hit;
+    };
+
+    std::vector<Reprojection> reprojection_buffer;
+    CircularBuffer<glm::vec3*, FRAME_HISTORY> previous_frame_buffer;
+
+private:
     RadianceCache cache;
     std::size_t cache_hits = 0;
-    std::size_t total_queries = 1;
-    Real cache_timer = 0.f;
+    std::size_t cache_queries = 1;
+    Real statistics_timer = 0.f;
+
+private:
+    std::size_t reprojection_hits = 0;
+    std::size_t reprojection_queries = 1;
 
 public:
     struct Emitter
@@ -703,6 +721,15 @@ public:
             ndc_buffer[i] = { 2.f * uv.x - 1.f, 2.f * uv.y - 1.f };
         }
 
+        reprojection_buffer.resize(number, Reprojection{});
+        std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});
+
+        for (auto i = 0; i < FRAME_HISTORY; i++)
+        {
+            previous_frame_buffer.push(new glm::vec3[number]);
+            std::fill(previous_frame_buffer.at(i), previous_frame_buffer.at(i) + number, glm::vec3{ 0.f });
+        }
+
         reciprocal_dimensions = { 1.f / ScreenWidth(), 1.f / ScreenHeight() };
 
         shutter_speed = SHUTTER_SPEEDS[shutter_index];
@@ -1061,13 +1088,20 @@ public:
             accumulated_frames = 1;
         }
 
-        cache_timer += fElapsedTime;
-        if (cache_timer > 2.f)
+        statistics_timer += fElapsedTime;
+        if (statistics_timer > 2.f)
         {
-            cache_timer = 0.f;
-            std::println("Cache hit rate: {} / {} = {:.2f}%", cache_hits, total_queries, total_queries > 0 ? (static_cast<Real>(cache_hits) / static_cast<Real>(total_queries)) * 100.f : 0.f);
+            statistics_timer = 0.f;
+
+            std::println("Cache hit rate: {} / {} = {:.2f}%", cache_hits, cache_queries, cache_queries > 0 ? (static_cast<Real>(cache_hits) / static_cast<Real>(cache_queries)) * 100.f : 0.f);
+
+            std::println("Reprojection hit rate: {} / {} = {:.2f}%", reprojection_hits, reprojection_queries, reprojection_queries > 0 ? (static_cast<Real>(reprojection_hits) / static_cast<Real>(reprojection_queries)) * 100.f : 0.f);   
+
             cache_hits = 0;
-            total_queries = 0;
+            cache_queries = 0;
+
+            reprojection_hits = 0;
+            reprojection_queries = 0;
         }
 
         now += fElapsedTime;
@@ -1109,6 +1143,7 @@ public:
 
             auto total_color = glm::vec3{ 0.f };
 
+            auto intersection = RayIntersection{};
             for (auto s = 0; s < _samples; s++)
             {
                 // centered shutter interval over the current frame, interpolate according to frametime
@@ -1130,8 +1165,8 @@ public:
                     timestamp
                 };
 
-                const auto u_jittered = (x + !dirty * glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.x;
-                const auto v_jittered = (y + !dirty * glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.y;
+                const auto u_jittered = (x + glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.x;
+                const auto v_jittered = (y + glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.y;
 
                 const auto ndc_x_jittered = 2.f * u_jittered - 1.f;
                 const auto ndc_y_jittered = 2.f * v_jittered - 1.f;
@@ -1156,7 +1191,6 @@ public:
                     jittered_ray.direction = glm::normalize(focal_point - jittered_ray.origin);
                 }
 
-                auto intersection = RayIntersection{};
                 auto result = trace(jittered_ray, _bounces, intersection);
 
                 // REVALIDATE(result.r);
@@ -1206,19 +1240,69 @@ public:
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
             const auto tone_mapped = tonemap(iso_corrected);
-            frame_buffer[i] += tone_mapped;
+
+
+            const auto previous_sample = reprojection_buffer[i];
+            if (previous_sample.hit && intersection.hit)
+            {
+                const auto& previous_ray = previous_sample.ray;
+
+                const auto world_space_position = glm::vec4{ previous_sample.position, 1.f };
+
+                const auto view_space_reprojected = current_view * world_space_position;
+                const auto homogenous_reprojected = projection * view_space_reprojected;
+                const auto ndc_reprojected = homogenous_reprojected / homogenous_reprojected.w;
+                const auto uv_reprojected = (glm::vec2{ ndc_reprojected } + 1.f) / 2.f;
+
+                const auto xy_reprojected = glm::ivec2{ uv_reprojected * glm::vec2{ ScreenWidth(), ScreenHeight() } };
+
+                reprojection_queries++;
+                if (xy_reprojected.x >= 0.f && xy_reprojected.x < ScreenWidth() && xy_reprojected.y >= 0.f && xy_reprojected.y < ScreenHeight())
+                {
+                    reprojection_hits++;
+
+                    const auto reprojected_index = xy_reprojected.x + xy_reprojected.y * ScreenWidth();
+                    // weight the reprojected color by the normal and depth difference
+                    const auto normal_weight = glm::clamp(glm::dot(intersection.normal, previous_sample.normal), 0.f, 1.f);
+                    const auto depth_weight = glm::clamp(previous_sample.depth / (intersection.depth + .001f), 0.f, 1.f);
+                    const auto reprojection_weight = normal_weight * depth_weight;
+
+                    auto& reprojected_color = frame_buffer[reprojected_index];
+                    reprojected_color += glm::mix(reprojected_color, tone_mapped, reprojection_weight);
+                }
+            }
+            else
+            {
+                frame_buffer[i] += tone_mapped;
+            }
+
+            reprojection_buffer[i] = Reprojection
+            {
+                .ray = rays[i],
+                .position = intersection.position,
+                .normal = intersection.normal,
+                .depth = intersection.depth,
+                .hit = intersection.hit,
+            };
         });
 
-        if (dirty)
-        {
-            DrawRectDecal({ 1.f, 1.f }, { 2.f, 2.f }, olc::GREEN);
-        }
+        auto* old = previous_frame_buffer.peek(1);
+        const auto number = ScreenWidth() * ScreenHeight();
+        std::copy(frame_buffer, frame_buffer + number, old);
+        previous_frame_buffer.push(old);
 
-        for (int x = 0; x < ScreenWidth(); x++)
+        for (auto x = 0; x < ScreenWidth(); x++)
         {
-            for (int y = 0; y < ScreenHeight(); y++)
+            for (auto y = 0; y < ScreenHeight(); y++)
             {
-                const auto color = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                auto color = glm::vec3{ 0.f };
+                for (auto i = 0; i < FRAME_HISTORY; i++)
+                {
+                    auto* buffer = previous_frame_buffer.peek(i);
+                    color += buffer[x + y * ScreenWidth()];
+                }
+                color /= (static_cast<Real>(FRAME_HISTORY) * static_cast<Real>(accumulated_frames));
+
                 const auto gamma_corrected = gamma_correct(color);
                 Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
             }

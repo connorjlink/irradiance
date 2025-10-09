@@ -26,7 +26,7 @@ hires:
 
 cornell:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL
-	./irradiance -width=1280 -height=720 -bounces=5 -samples=1 -hires
+	./irradiance -width=400 -height=300 -bounces=5 -samples=1
 
 clean:
 	rm -f irradiance
