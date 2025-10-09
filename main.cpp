@@ -1241,40 +1241,35 @@ public:
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
             const auto tone_mapped = tonemap(iso_corrected);
 
+            #define ENABLE_REPROJECTION
+            #ifdef ENABLE_REPROJECTION
 
             const auto previous_sample = reprojection_buffer[i];
-            if (previous_sample.hit && intersection.hit)
+            const auto& previous_ray = previous_sample.ray;
+
+            const auto world_space_position = glm::vec4{ previous_sample.position, 1.f };
+
+            const auto view_space_reprojected = current_view * world_space_position;
+            const auto homogenous_reprojected = projection * view_space_reprojected;
+            const auto ndc_reprojected = homogenous_reprojected / homogenous_reprojected.w;
+            const auto uv_reprojected = (glm::vec2{ ndc_reprojected } + 1.f) / 2.f;
+
+            const auto xy_reprojected = glm::ivec2{ uv_reprojected * glm::vec2{ ScreenWidth(), ScreenHeight() } };
+
+            reprojection_queries++;
+            if (xy_reprojected.x >= 0 && xy_reprojected.x < ScreenWidth() && 
+                xy_reprojected.y >= 0 && xy_reprojected.y < ScreenHeight() && 
+                previous_sample.hit && intersection.hit)
             {
-                const auto& previous_ray = previous_sample.ray;
+                reprojection_hits++;
 
-                const auto world_space_position = glm::vec4{ previous_sample.position, 1.f };
-
-                const auto view_space_reprojected = current_view * world_space_position;
-                const auto homogenous_reprojected = projection * view_space_reprojected;
-                const auto ndc_reprojected = homogenous_reprojected / homogenous_reprojected.w;
-                const auto uv_reprojected = (glm::vec2{ ndc_reprojected } + 1.f) / 2.f;
-
-                const auto xy_reprojected = glm::ivec2{ uv_reprojected * glm::vec2{ ScreenWidth(), ScreenHeight() } };
-
-                reprojection_queries++;
-                if (xy_reprojected.x >= 0.f && xy_reprojected.x < ScreenWidth() && xy_reprojected.y >= 0.f && xy_reprojected.y < ScreenHeight())
-                {
-                    reprojection_hits++;
-
-                    const auto reprojected_index = xy_reprojected.x + xy_reprojected.y * ScreenWidth();
-                    // weight the reprojected color by the normal and depth difference
-                    const auto normal_weight = glm::clamp(glm::dot(intersection.normal, previous_sample.normal), 0.f, 1.f);
-                    const auto depth_weight = glm::clamp(previous_sample.depth / (intersection.depth + .001f), 0.f, 1.f);
-                    const auto reprojection_weight = normal_weight * depth_weight;
-
-                    auto& reprojected_color = frame_buffer[reprojected_index];
-                    reprojected_color += glm::mix(reprojected_color, tone_mapped, reprojection_weight);
-                }
+                const auto reprojected_index = xy_reprojected.x + xy_reprojected.y * ScreenWidth();
+                frame_buffer[reprojected_index] += previous_sample.color;
             }
-            else
-            {
-                frame_buffer[i] += tone_mapped;
-            }
+
+            #endif
+
+            frame_buffer[i] += tone_mapped;
 
             reprojection_buffer[i] = Reprojection
             {
