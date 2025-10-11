@@ -121,7 +121,7 @@ private:
     };
 
     std::vector<Reprojection> reprojection_buffer;
-    CircularBuffer<glm::vec3*, FRAME_HISTORY> previous_frame_buffer;
+    std::vector<Real> sample_counts;
 
 private:
     RadianceCache cache;
@@ -270,7 +270,7 @@ public:
             {
                 const auto index = x + y * ScreenWidth();
 
-                const auto original = frame_buffer[x + y * ScreenWidth()] / static_cast<Real>(accumulated_frames);
+                const auto original = frame_buffer[x + y * ScreenWidth()] / sample_counts[index];
 
                 const auto gamma_corrected = gamma_correct(original);
 
@@ -605,6 +605,7 @@ public:
             #ifdef ENABLE_DLS
 
             // DIRECT LIGHT SAMPLING PATH TERMINATION
+
             if (!emissive_objects.empty())
             {
                 auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f }; 
@@ -643,7 +644,6 @@ public:
                         .direction = light_direction,
                     };
 
-                    const auto geometry = (normal_cosine * light_cosine) / distance2;
                     const auto radiance = sampled_emitter.object->material.emission;
 
                     const auto pdf = distance2 / (light_cosine * light_area);
@@ -651,12 +651,25 @@ public:
                     const auto occlusion = compute_nearest_intersection(light_ray);
                     if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
+                        const auto geometry = (normal_cosine * light_cosine) / distance2;
                         path += absorption * radiance * geometry / (weight * pdf);
+                    }
+                    else
+                    {
+                        if constexpr (ENABLE_SKYBOX)
+                        {
+                            const auto uv = compute_skybox_uv_coordinates(light_direction);
+                            const auto sample = skybox->Sample(uv.x, uv.y);
+                            const auto skybox_radiance = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
+                            const auto geometry = glm::clamp(glm::dot(normal, -reflection), 0.f, 1.f);
+                            path += absorption * skybox_radiance * geometry / weight;
+                        }
                     }
                 }
             }
-            #endif
             
+            #endif
+
             // STANDARD PATH TERMINATION
             {
                 path += absorption * trace(ray, bounces - 1, output_intersection) / weight;
@@ -722,13 +735,7 @@ public:
         }
 
         reprojection_buffer.resize(number, Reprojection{});
-        std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});
-
-        for (auto i = 0; i < FRAME_HISTORY; i++)
-        {
-            previous_frame_buffer.push(new glm::vec3[number]);
-            std::fill(previous_frame_buffer.at(i), previous_frame_buffer.at(i) + number, glm::vec3{ 0.f });
-        }
+        sample_counts.resize(number, 1.f);
 
         reciprocal_dimensions = { 1.f / ScreenWidth(), 1.f / ScreenHeight() };
 
@@ -950,7 +957,10 @@ public:
 
             last_mouse_position = GetMousePos();
 
-            dirty = true;
+            if (delta != olc::vi2d{ 0, 0 })
+            {
+                dirty = true;
+            }
         }
 
         // adjust the DOF focal distance by clicking anywhere in the scene
@@ -1081,13 +1091,6 @@ public:
             dirty = true;
         }
 
-        if (dirty || (!dirty && last_dirty))
-        {
-            const auto number = ScreenWidth() * ScreenHeight();
-            std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
-            accumulated_frames = 1;
-        }
-
         statistics_timer += fElapsedTime;
         if (statistics_timer > 2.f)
         {
@@ -1193,9 +1196,9 @@ public:
 
                 auto result = trace(jittered_ray, _bounces, intersection);
 
-                // REVALIDATE(result.r);
-                // REVALIDATE(result.g);
-                // REVALIDATE(result.b);
+                REVALIDATE(result.r);
+                REVALIDATE(result.g);
+                REVALIDATE(result.b);
 
                 //#define ENABLE_RADIANCE_CACHE
                 #ifdef ENABLE_RADIANCE_CACHE
@@ -1236,40 +1239,71 @@ public:
             }
 
             total_color /= static_cast<Real>(_samples);
-
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
             const auto tone_mapped = tonemap(iso_corrected);
 
+            sample_counts[i] += 1.f;
+            frame_buffer[i] += tone_mapped;
+
             #define ENABLE_REPROJECTION
             #ifdef ENABLE_REPROJECTION
 
-            const auto previous_sample = reprojection_buffer[i];
-            const auto& previous_ray = previous_sample.ray;
-
-            const auto world_space_position = glm::vec4{ previous_sample.position, 1.f };
-
-            const auto view_space_reprojected = current_view * world_space_position;
-            const auto homogenous_reprojected = projection * view_space_reprojected;
-            const auto ndc_reprojected = homogenous_reprojected / homogenous_reprojected.w;
-            const auto uv_reprojected = (glm::vec2{ ndc_reprojected } + 1.f) / 2.f;
-
-            const auto xy_reprojected = glm::ivec2{ uv_reprojected * glm::vec2{ ScreenWidth(), ScreenHeight() } };
-
-            reprojection_queries++;
-            if (xy_reprojected.x >= 0 && xy_reprojected.x < ScreenWidth() && 
-                xy_reprojected.y >= 0 && xy_reprojected.y < ScreenHeight() && 
-                previous_sample.hit && intersection.hit)
+            if (dirty)
             {
-                reprojection_hits++;
+                const auto previous_sample = reprojection_buffer[i];
+                const auto& previous_ray = previous_sample.ray;
 
-                const auto reprojected_index = xy_reprojected.x + xy_reprojected.y * ScreenWidth();
-                frame_buffer[reprojected_index] += previous_sample.color;
+                const auto world_space_position = glm::vec4{ previous_sample.position, 1.f };
+
+                const auto view_space_reprojected = current_view * world_space_position;
+                const auto homogenous_reprojected = projection * view_space_reprojected;
+                const auto ndc_reprojected = homogenous_reprojected / homogenous_reprojected.w;
+                const auto uv_reprojected = (glm::vec2{ ndc_reprojected } + 1.f) / 2.f;
+
+                reprojection_queries++;
+                if (uv_reprojected.x > 0.f && uv_reprojected.x < 1.f && 
+                    uv_reprojected.y > 0.f && uv_reprojected.y < 1.f && 
+                    previous_sample.hit && intersection.hit)
+                {
+                    reprojection_hits++;
+
+                    const auto point = uv_reprojected * glm::vec2{ ScreenWidth(), ScreenHeight() };
+
+                    // 2x2 grid filter
+                    const auto p0 = glm::floor(point);
+                    const auto p1 = p0 + glm::vec2{ 1.f };
+
+                    const auto f = point - p0;
+
+                    // bilinear interpolation
+                    const auto weights = glm::vec4
+                    { 
+                        (1.f - f.x) * (1.f - f.y),
+                        f.x * (1.f - f.y),        
+                        (1.f - f.x) * f.y,        
+                        f.x * f.y                 
+                    };
+
+                    auto sample = [&](auto x, auto y, auto weight)
+                    {
+                        const auto j = static_cast<std::size_t>(x + y * ScreenWidth());
+                        if (j < 0 || j >= sample_counts.size()) 
+                        {
+                            return;
+                        }
+                        sample_counts[j] += weight;
+                        frame_buffer[j] += previous_sample.color * weight;
+                    };
+
+                    sample(p0.x, p0.y, weights.x);
+                    sample(p1.x, p0.y, weights.y);
+                    sample(p0.x, p1.y, weights.z);
+                    sample(p1.x, p1.y, weights.w);
+                }
             }
-
+            
             #endif
-
-            frame_buffer[i] += tone_mapped;
 
             reprojection_buffer[i] = Reprojection
             {
@@ -1277,30 +1311,32 @@ public:
                 .position = intersection.position,
                 .normal = intersection.normal,
                 .depth = intersection.depth,
+                .color = frame_buffer[i] / sample_counts[i],
                 .hit = intersection.hit,
             };
         });
-
-        auto* old = previous_frame_buffer.peek(1);
-        const auto number = ScreenWidth() * ScreenHeight();
-        std::copy(frame_buffer, frame_buffer + number, old);
-        previous_frame_buffer.push(old);
 
         for (auto x = 0; x < ScreenWidth(); x++)
         {
             for (auto y = 0; y < ScreenHeight(); y++)
             {
-                auto color = glm::vec3{ 0.f };
-                for (auto i = 0; i < FRAME_HISTORY; i++)
-                {
-                    auto* buffer = previous_frame_buffer.peek(i);
-                    color += buffer[x + y * ScreenWidth()];
-                }
-                color /= (static_cast<Real>(FRAME_HISTORY) * static_cast<Real>(accumulated_frames));
-
+                const auto index = x + y * ScreenWidth();
+                const auto color = frame_buffer[index] / sample_counts[index];
                 const auto gamma_corrected = gamma_correct(color);
                 Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
             }
+        }
+
+        if (dirty || (!dirty && last_dirty))
+        {
+            const auto number = ScreenWidth() * ScreenHeight();
+            std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
+            std::fill(sample_counts.begin(), sample_counts.end(), 0.f);
+            accumulated_frames = 1;
+        }
+        if (!dirty && last_dirty)
+        {
+            std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});
         }
 
         last_mouse_position = GetMousePos();
