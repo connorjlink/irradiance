@@ -7,24 +7,26 @@
 #include "glm/gtc/constants.hpp"
 
 #include <vector>
+#include <algorithm>
+#include <numeric>
 
 // transform.h
 // (c) 2025 Connor J. Link. All Rights Reserved.
 
 namespace ir
 {
-    inline static constexpr float LONG_WAVELENGTH   = 700.0f;
-    inline static constexpr float MEDIUM_WAVELENGTH = 550.0f;
-    inline static constexpr float SHORT_WAVELENGTH  = 450.0f;
+    inline static constexpr Real LONG_WAVELENGTH   = 700.0f;
+    inline static constexpr Real MEDIUM_WAVELENGTH = 550.0f;
+    inline static constexpr Real SHORT_WAVELENGTH  = 450.0f;
 
     // will be useful for Gaussian spectral sensitivity functions
-    inline static constexpr float WAVELENGTH_DEVIATION = 40.0f;
+    inline static constexpr Real WAVELENGTH_DEVIATION = 40.0f;
 
-    inline static const float WAVELENGTHS[3] = { LONG_WAVELENGTH, MEDIUM_WAVELENGTH, SHORT_WAVELENGTH };
+    inline static const Real WAVELENGTHS[3] = { LONG_WAVELENGTH, MEDIUM_WAVELENGTH, SHORT_WAVELENGTH };
 
-    inline static constexpr float REFENCE_WAVELENGTH = SHORT_WAVELENGTH;
-    inline static constexpr float WAVELENGTH_RESOLUTION = 10.0f;
-    inline static constexpr float WAVELENGTH_DELTA = (LONG_WAVELENGTH - SHORT_WAVELENGTH) / WAVELENGTH_RESOLUTION;
+    inline static constexpr Real REFENCE_WAVELENGTH = SHORT_WAVELENGTH;
+    inline static constexpr Real WAVELENGTH_RESOLUTION = 10.0f;
+    inline static constexpr Real WAVELENGTH_DELTA = (LONG_WAVELENGTH - SHORT_WAVELENGTH) / WAVELENGTH_RESOLUTION;
 
     inline static constexpr int DIFFRACTION_RASTER_SIZE = 512;
 
@@ -185,6 +187,79 @@ namespace ir
         }
 
         a.swap(out);
+    }
+
+    inline std::vector<float> resize_bilinear(const std::vector<float>& source, std::uint32_t source_width, std::uint32_t source_height, std::uint32_t destination_width, std::uint32_t destination_height) 
+    {
+        // why doesn't this allow aggregate initialization???
+        std::vector<Real> result(destination_width * destination_height, .0f);
+        if (source_width == 0 || source_width == 0 || destination_width == 0 || destination_height == 0) 
+        {
+            return result;
+        }
+
+        const auto scale_x = source_width / static_cast<float>(destination_width);
+        const auto scale_y = source_height / static_cast<float>(destination_height);
+
+        for (auto y = 0; y < destination_height; y++)
+        {
+            const auto target_y = (y + .5f) * scale_y - .5f;
+
+            auto y0 = static_cast<std::uint32_t>(std::floor(target_y));
+            auto y1 = y0 + 1;
+
+            const auto wy1 = target_y - y0;
+            const auto wy0 = 1.f - wy1;
+
+            y0 = std::clamp(y0, 0u, source_height - 1);
+            y1 = std::clamp(y1, 0u, source_height - 1);
+
+            for (auto x = 0; x < destination_width; x++)
+            {
+                const auto target_x = (x + 0.5f) * scale_x - 0.5f;
+
+                auto x0 = static_cast<std::uint32_t>(std::floor(target_x));
+                auto x1 = x0 + 1;
+
+                const auto wx1 = target_x - x0;
+                const auto wx0 = 1.f - wx1;
+                
+                x0 = std::clamp(x0, 0u, source_width - 1);
+                x1 = std::clamp(x1, 0u, source_width - 1);
+
+                const auto v00 = source[y0 * source_width + x0];
+                const auto v01 = source[y0 * source_width + x1];
+                const auto v10 = source[y1 * source_width + x0];
+                const auto v11 = source[y1 * source_width + x1];
+
+                const auto v0 = v00 * wx0 + v01 * wx1;
+                const auto v1 = v10 * wx0 + v11 * wx1;
+                result[y * destination_width + x] = v0 * wy0 + v1 * wy1;
+            }
+        }
+        return result;
+    }
+
+    inline std::vector<Real> rescale_psf(const std::vector<Real>& psf, std::uint32_t psf_width, std::uint32_t psf_height, Real wavelength)
+    {
+        const auto scale = wavelength / SHORT_WAVELENGTH;
+
+        const auto new_width = std::max(1, static_cast<int>(std::round(psf_width * scale)));
+        const auto new_height = std::max(1, static_cast<int>(std::round(psf_height * scale)));
+        
+        std::vector<float> psf_scaled = resize_bilinear(psf, psf_height, psf_width, new_height, new_width);
+
+        // normalize
+        const auto sum = std::accumulate(psf_scaled.begin(), psf_scaled.end(), 0.0);
+        if (sum > 0.f)
+        {
+            for (auto& pixel : psf_scaled) 
+            {
+                pixel /= sum;
+            }
+        }
+
+        return psf_scaled;
     }
 }
 

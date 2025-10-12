@@ -29,7 +29,7 @@
 #include "scenes.h"
 #include "cache.h"
 #include "meshes.h"
-#include "transform.h"
+//#include "transform.h"
 
 // main.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -48,6 +48,12 @@ static constexpr Real REFERENCE_ISO = 4.f * 4.f * BASE_ISO; // ISO400
 static constexpr Real MAX_ISO_MULTIPLIER = 128.f;
 
 static constexpr Real SENSOR_HEIGHT = 35.f; // full-frame sensor mm
+
+static constexpr Real HISTORY_HALF_LIFE_STABLE =  .25f;
+static constexpr Real HISTORY_HALF_LIFE_DIRTY  = .1f;
+static constexpr Real HISTORY_EPSILON = 1e-6f;
+
+static constexpr Real CLEAN_EXPIRY = 1.f;
 
 static constexpr int FRAME_HISTORY = 1;
 
@@ -88,6 +94,7 @@ private:
     olc::vi2d last_mouse_position = { 0, 0 };
     bool dirty = true;
     bool last_dirty = false;
+    Real clean_timer = 0.f;
     glm::vec3 position = { 0.95f, -.5f, -0.95f };
     Real fov_degrees = 90.f;
     Real yaw_degrees = -45.f, pitch_degrees = 20.f;
@@ -1241,16 +1248,29 @@ public:
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
             const auto tone_mapped = tonemap(iso_corrected);
+            
+            const auto half_life = dirty ? HISTORY_HALF_LIFE_DIRTY : HISTORY_HALF_LIFE_STABLE;
+            const auto decay = glm::pow(.5f, fElapsedTime / glm::max(half_life, HISTORY_EPSILON));
 
-            sample_counts[i] += 1.f;
-            frame_buffer[i] += tone_mapped;
+            if (clean_timer < CLEAN_EXPIRY)
+            {
+                sample_counts[i] = glm::max(sample_counts[i] * decay, HISTORY_EPSILON);
+                frame_buffer[i] *= decay;
+            }
+
+            if (!GetKey(olc::Key::Q).bHeld)
+            {
+                sample_counts[i] += 1.f;
+                frame_buffer[i] += tone_mapped;
+            }
 
             #define ENABLE_REPROJECTION
             #ifdef ENABLE_REPROJECTION
 
+            const auto previous_sample = reprojection_buffer[i];
+
             if (dirty)
             {
-                const auto previous_sample = reprojection_buffer[i];
                 const auto& previous_ray = previous_sample.ray;
 
                 const auto world_space_position = glm::vec4{ previous_sample.position, 1.f };
@@ -1263,7 +1283,7 @@ public:
                 reprojection_queries++;
                 if (uv_reprojected.x > 0.f && uv_reprojected.x < 1.f && 
                     uv_reprojected.y > 0.f && uv_reprojected.y < 1.f && 
-                    previous_sample.hit && intersection.hit)
+                    previous_sample.hit)
                 {
                     reprojection_hits++;
 
@@ -1301,18 +1321,23 @@ public:
                     sample(p1.x, p1.y, weights.w);
                 }
             }
-            
-            #endif
 
+            const auto safe_color = (sample_counts[i] > 0.f)
+                ? (frame_buffer[i] / sample_counts[i])
+                : previous_sample.color;
+            
             reprojection_buffer[i] = Reprojection
             {
                 .ray = rays[i],
                 .position = intersection.position,
                 .normal = intersection.normal,
                 .depth = intersection.depth,
-                .color = frame_buffer[i] / sample_counts[i],
+                .color = safe_color,
                 .hit = intersection.hit,
             };
+
+            #endif
+            
         });
 
         for (auto x = 0; x < ScreenWidth(); x++)
@@ -1326,19 +1351,26 @@ public:
             }
         }
 
-        if (dirty || (!dirty && last_dirty))
+        if (!dirty && last_dirty && !GetKey(olc::Key::Q).bHeld)
         {
             const auto number = ScreenWidth() * ScreenHeight();
             std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
             std::fill(sample_counts.begin(), sample_counts.end(), 0.f);
             accumulated_frames = 1;
         }
-        if (!dirty && last_dirty)
-        {
-            std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});
-        }
+        // if (dirty || (!dirty && last_dirty))
+        // {
+        //     
+        // }
+        // if (!dirty && last_dirty)
+        // {
+        //     //std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});
+        // }
 
         last_mouse_position = GetMousePos();
+
+        clean_timer = dirty ? 0.f : clean_timer + fElapsedTime;
+
         last_dirty = dirty;
         dirty = false;
         accumulated_frames++;
