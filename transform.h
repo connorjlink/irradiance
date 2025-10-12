@@ -143,7 +143,6 @@ namespace ir
         return result;
     }
 
-
     inline void fftshift2D(std::vector<Real>& a, std::uint32_t height, std::uint32_t width)
     {
         // As described by https://docs.pytorch.org/docs/stable/generated/torch.fft.fftshift.html
@@ -167,7 +166,7 @@ namespace ir
         a.swap(out);
     }
 
-    static void ifftshift2D(std::vector<Real>& a, std::uint32_t height, std::uint32_t width)
+    inline void ifftshift2D(std::vector<Real>& a, std::uint32_t height, std::uint32_t width)
     {
         // out[y,x] = in[(y + (h+1)/2) % h, (x + (w+1)/2) % w] (same as h/2 when even)
 
