@@ -29,7 +29,7 @@
 #include "scenes.h"
 #include "cache.h"
 #include "meshes.h"
-//#include "transform.h"
+#include "transform.h"
 
 // main.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -1358,10 +1358,7 @@ public:
             std::fill(sample_counts.begin(), sample_counts.end(), 0.f);
             accumulated_frames = 1;
         }
-        // if (dirty || (!dirty && last_dirty))
-        // {
-        //     
-        // }
+        // TODO: necessary if view decay not used
         // if (!dirty && last_dirty)
         // {
         //     //std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});

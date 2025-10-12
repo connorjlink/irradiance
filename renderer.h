@@ -11,7 +11,7 @@
 
 namespace ir
 {
-    static constexpr float EPSILON_F = .001f;
+    static constexpr Real EPSILON_F = .001f;
     static const glm::vec3 EPSILON = glm::vec3{ EPSILON_F, EPSILON_F, EPSILON_F };
 
     struct BoundingVolume
