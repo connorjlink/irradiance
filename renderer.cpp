@@ -984,7 +984,7 @@ namespace ir
             else if (tokens[0] == "usemtl")
             {
                 const auto& material_name = tokens[1];
-                //#error "TODO: implement material usage"
+                #warning "TODO: implement material usage"
             }
             else if (tokens[0] == "mtllib")
             {

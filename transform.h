@@ -5,14 +5,14 @@
 
 #include "glm/glm.hpp"
 #include "glm/gtc/constants.hpp"
+#include "/usr/local/include/fftw3.h"
 
 #include <vector>
 #include <algorithm>
 #include <numeric>
 #include <complex>
 #include <print>
-
-#include "/usr/local/include/fftw3.h"
+#include <cassert>
 
 // transform.h
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -55,13 +55,18 @@ namespace ir
         {
         }
 
+        ImageBuffer(const std::vector<T>& data, std::uint32_t width, std::uint32_t height)
+            : data{ data }, width{ width }, height{ height }
+        {
+            assert(data.size() == width * height);
+        }
+
     public:
         constexpr T& operator[](std::size_t x, std::size_t y)
         {
             return data[y * width + x];
         }
     };
-
 
     // The following functions derive from the sRGB color space conversion formulae as described here
     // https://entropymine.com/imageworsener/srgbformula/
@@ -131,6 +136,54 @@ namespace ir
             const auto t = (pixel - low) / denominator;
             pixel = std::clamp(t, 0.f, 1.f);
         }
+    }
+
+    inline void save_debug_image(const std::vector<Real>& buffer, std::uint32_t width, std::uint32_t height, const std::string& path, bool logarithmic = false)
+    {
+        std::vector<Real> data(buffer.begin(), buffer.end());
+
+        if (logarithmic)
+        {
+            for (auto& pixel : data) 
+            {
+                pixel = std::log10(std::max(1e-10f, pixel));
+            }
+
+            auto [minimum_iterator, maximum_iterator] = std::minmax_element(data.begin(), data.end());
+            const auto minimum = *minimum_iterator, maximum = *maximum_iterator;
+            const auto denominator = (maximum > minimum) ? (maximum - minimum) : 1.f;
+
+            for (auto& pixel : data) 
+            {
+                pixel = (pixel - minimum) / denominator;
+            }
+        } 
+        else
+        {
+            // normalize according to the darkest shadows and brightest highlights to ensure every image is subject to some diffraction
+            const auto low = percentile(data, .1f);
+            const auto high = percentile(data, 99.9f);
+            const auto denominator = (high > low) ? (high - low) : 1.f;
+
+            for (auto& pixel : data)
+            {
+                const auto t = (pixel - low) / denominator;
+                pixel = std::clamp(t, 0.f, 1.f);
+            }
+        }
+
+        std::vector<std::uint8_t> out(width * height, 0);
+        for (auto i = 0uz; i < out.size(); i++)
+        {
+            out[i] = static_cast<std::uint8_t>(std::round(std::clamp(data[i] * 255.0f, 0.0f, 255.0f)));
+        }
+
+        stbi_write_png(path.c_str(), width, height, 1, out.data(), width * sizeof(std::uint8_t));
+    }
+
+    inline void save_debug_image(const ImageBuffer<Real>& image, const std::string& path, bool logarithmic = false)
+    {
+        save_debug_image(image.data, image.width, image.height, path, logarithmic);
     }
 
     inline ImageBuffer<Real> polygonal_aperture(std::uint32_t blades, Real rotation)
@@ -286,12 +339,22 @@ namespace ir
         return psf_scaled;
     }
 
+    inline ImageBuffer<Real> rescale_psf(const ImageBuffer<Real>& psf, Real wavelength)
+    {
+        return ImageBuffer<Real>
+        { 
+            rescale_psf(psf.data, psf.width, psf.height, wavelength),
+            psf.width,
+            psf.height
+        };
+    }
+
     inline std::vector<std::complex<Real>> fft2_forward(const std::vector<Real>& input, std::uint32_t width, std::uint32_t height) 
     {
-        std::vector<std::complex<Real>> result{ width * height , { 0.f, 0.f } };
+        std::vector<std::complex<Real>> result{ width * height, { 0.f, 0.f } };
 
-        auto* in = (fftwf_complex*)fftw_malloc(sizeof(fftwf_complex) * width * height);
-        auto* out = (fftwf_complex*)fftw_malloc(sizeof(fftwf_complex) * width * height);
+        auto* in = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * width * height);
+        auto* out = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * width * height);
         if (!in || !out) 
         {
             std::println("fftwf_malloc failed");
@@ -323,15 +386,15 @@ namespace ir
     {
         std::vector<Real> result(width * height, 0.f);
 
-        auto* in = (fftwf_complex*)fftw_malloc(sizeof(fftwf_complex) * width * height);
-        auto* out = (fftwf_complex*)fftw_malloc(sizeof(fftwf_complex) * width * height);
+        auto* in = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * width * height);
+        auto* out = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * width * height);
         if (!in || !out) 
         {
             std::println("fftwf_malloc failed");
             return result;
         }
 
-        for (int i = 0; i < width * height; i++) 
+        for (auto i = 0; i < width * height; i++) 
         { 
             in[i][0] = input[i].real(); 
             in[i][1] = input[i].imag(); 
@@ -361,7 +424,7 @@ namespace ir
         return 1 << ((sizeof(T) * CHAR_BIT) - std::countl_zero(value - 1));
     }
 
-    inline std::vector<Real> fft_convolve_same(ImageBuffer<Real>& image, ImageBuffer<Real>& kernel)
+    inline std::vector<Real> fft_convolve_cropped(ImageBuffer<Real>& image, ImageBuffer<Real>& kernel)
     {
         const auto Q = next_power2(image.width + kernel.width - 1);
         const auto P = next_power2(image.height + kernel.height - 1);
@@ -379,8 +442,8 @@ namespace ir
         // FFT
         // can save on zero-initialization since the fft will overwrite the full buffer
         std::vector<std::complex<Real>> fourier_a{ P * Q }, fourier_b{ P * Q };
-        fourier_a = fft2_forward(buffer_a, (int)P, (int)Q);
-        fourier_b = fft2_forward(buffer_b, (int)P, (int)Q);
+        fourier_a = fft2_forward(buffer_a, P, Q);
+        fourier_b = fft2_forward(buffer_b, P, Q);
 
         for (auto i = 0uz; i < fourier_a.size(); i++)
         {
@@ -396,11 +459,11 @@ namespace ir
         const auto padding_y = (kernel.height - 1) / 2;
 
         std::vector<Real> out(image.width * image.height, 0.f);
-        for (auto y = 0; y < image.height; ++y)
+        for (auto y = 0; y < image.height; y++)
         {
             const auto shifted_y = y + padding_y;
 
-            for (auto x = 0; x < image.width; ++x)
+            for (auto x = 0; x < image.width; x++)
             {
                 const auto shifted_x = x + padding_x;
                 out[y * image.width + x] = convolution[shifted_y * Q + shifted_x];
@@ -440,6 +503,82 @@ namespace ir
         }
 
         return fourier2;
+    }
+
+    inline ImageBuffer<Real> compute_psf(ImageBuffer<Real>& aperture)
+    {
+        return ImageBuffer<Real>
+        { 
+            compute_psf(aperture.data, aperture.width, aperture.height),
+            aperture.width, 
+            aperture.height
+        };
+    }
+
+    inline std::vector<glm::vec3> compute_diffraction(const std::vector<glm::vec3>& image, std::uint32_t width, std::uint32_t height, std::uint32_t blades, float rotation)
+    {
+        auto aperture = polygonal_aperture(blades, rotation);
+        save_debug_image(aperture, "cpp_diffracted_aperture.png", false);
+
+        auto psf = compute_psf(aperture);
+        normalize_by_percentiles(psf.data, 0.1, 99.9);
+        save_debug_image(psf, "cpp_diffracted_psf.png", false);
+
+        std::vector<Real> luminance(height * width, 0.f);
+        for (auto i = 0; i < height * width; i++)
+        {
+            // sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
+            const auto Y = .2126f * image[i].r + .7152f * image[i].g + .0722f * image[i].b;
+            // relinearization with gamma
+            luminance[i] = std::pow(std::max(Y, 0.f), 1.5f);
+        }
+        save_debug_image(luminance, height, width, "cpp_diffracted_luminance.png", false);
+
+        std::vector<glm::vec3> result(height * width, glm::vec3{ 0.f });
+        for (auto channel = 0; channel < 3; channel++)
+        {
+            auto channel_psf = rescale_psf(psf, WAVELENGTHS[channel]);
+
+            std::vector<Real> image_channel(height * width, 0.f);
+            for (auto i = 0; i < height * width; i++)
+            {
+                image_channel[i] = image[i][channel] * luminance[i];
+            }
+
+            ImageBuffer<Real> channel_buffer{ image_channel, width, height };
+
+            auto convolution = fft_convolve_cropped(channel_buffer, channel_psf);
+            for (auto i = 0; i < height * width; i++)
+            {
+                result[i][channel] = convolution[i];
+            }
+
+            auto maximum_psf = .0f;
+            for (auto pixel : result) 
+            {
+                maximum_psf = glm::max(maximum_psf, pixel[channel]);
+            }
+            if (maximum_psf > 0.f)
+            {
+                for (auto& pixel : result) 
+                {
+                    pixel /= maximum_psf;
+                }
+            }
+        }
+
+        static constexpr auto MULTIPLIER = 3.f;
+
+        for (auto i = 0; i < height * width; i++)
+        {
+            for (auto channel = 0; channel < 3; channel++)
+            {
+                const auto contribution = image[i][channel] + MULTIPLIER * result[i][channel];
+                result[i][channel] = std::clamp(contribution, 0.f, 1.f);
+            }
+        }
+
+        return result;
     }
 }
 

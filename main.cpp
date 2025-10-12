@@ -1090,6 +1090,21 @@ public:
             dirty = true;
         }
 
+        if (GetKey(olc::Key::Y).bPressed)
+        {
+            // diffract current framebuffer once
+
+            const auto blades = 7;
+            const auto rotation = -glm::radians(14.f * 360.f / blades);
+
+            const auto number = ScreenWidth() * ScreenHeight();
+            std::vector<glm::vec3> original_frame_buffer(number);
+            std::copy(frame_buffer, frame_buffer + number, original_frame_buffer.data());
+
+            auto diffraction = compute_diffraction(original_frame_buffer, ScreenWidth(), ScreenHeight(), blades, rotation);
+            std::copy(diffraction.begin(), diffraction.end() + number, frame_buffer);
+        }
+
             
         if (GetKey(olc::Key::T).bPressed)
         {
