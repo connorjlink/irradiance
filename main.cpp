@@ -29,6 +29,7 @@
 #include "scenes.h"
 #include "cache.h"
 #include "meshes.h"
+#include "transform.h"
 
 // main.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -248,7 +249,7 @@ public:
     {
         // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
 
-        const auto corrected = glm::pow(color, glm::vec3{ 1.f / 2.2f });
+        const auto corrected = glm::pow(color, glm::vec3{ 1.f / 1.5f });
         return glm::clamp(corrected, 0.f, 1.f);
     }
 
@@ -357,9 +358,7 @@ public:
 
     Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
     {
-        // NOTE: I have no idea why this extra epsilon is necessary, but otherwise things with very low roughness 
-        // end up basically black and colorless. TODO: Ask Shaeffer?
-        const auto roughness4 = roughness * roughness * roughness * roughness + .001f;
+        const auto roughness4 = roughness * roughness * roughness * roughness + .01f;
 
         const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
         const auto angle2 = angle * angle;

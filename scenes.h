@@ -80,7 +80,7 @@ namespace ir
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 1.f,
                     .anisotropy = 0.f,
-                    .roughness = .8f,
+                    .roughness = .2f,
                     .texture = gemstone.get(),
                 }
             },
