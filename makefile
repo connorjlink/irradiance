@@ -12,8 +12,12 @@ run:
 	clang++ *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
 	./irradiance
 
+debug:
+	clang++ -g *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -O0 -g -fsanitize=address -fno-omit-frame-pointer
+	./irradiance -width=300 -height=300 -bounces=5 -samples=1
+
 release:
-	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
+	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) 
 	./irradiance -width=300 -height=300 -bounces=5 -samples=1
 
 linkedin:
@@ -31,3 +35,4 @@ cornell:
 clean:
 	rm -f irradiance
 	rm -rf *.o
+	rm -f cpp_*.png

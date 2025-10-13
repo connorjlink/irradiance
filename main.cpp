@@ -1102,7 +1102,13 @@ public:
             std::copy(frame_buffer, frame_buffer + number, original_frame_buffer.data());
 
             auto diffraction = compute_diffraction(original_frame_buffer, ScreenWidth(), ScreenHeight(), blades, rotation);
-            std::copy(diffraction.begin(), diffraction.end() + number, frame_buffer);
+            assert(diffraction.size() == number);
+            for (auto i = 0; i < number; i++)
+            {
+                reprojection_buffer[i].color = diffraction[i];
+                frame_buffer[i] = diffraction[i];
+            }
+            std::fill(sample_counts.begin(), sample_counts.end(), 1.f);
         }
 
             
