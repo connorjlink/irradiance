@@ -256,7 +256,7 @@ public:
     {
         // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
 
-        const auto corrected = glm::pow(color, glm::vec3{ 1.f / 1.5f });
+        const auto corrected = glm::pow(color, glm::vec3{ 1.f });
         return glm::clamp(corrected, 0.f, 1.f);
     }
 
@@ -1110,7 +1110,6 @@ public:
             }
             std::fill(sample_counts.begin(), sample_counts.end(), 1.f);
         }
-
             
         if (GetKey(olc::Key::T).bPressed)
         {
