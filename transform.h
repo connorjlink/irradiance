@@ -269,7 +269,7 @@ namespace ir
         save_debug_image(image.data, image.width, image.height, path, logarithmic);
     }
 
-    inline ImageBuffer<Real> polygonal_aperture(std::uint32_t blades, Real rotation)
+    inline ImageBuffer<Real> polygonal_aperture(std::uint32_t blades, Real rotation, Real scale = 1.f)
     {
         ImageBuffer<Real> result{ DIFFRACTION_RASTER_SIZE, DIFFRACTION_RASTER_SIZE, 1.0f };
 
@@ -284,14 +284,17 @@ namespace ir
             {
                 const auto xx = (x / (result.width - 1.f) * 2.f) - 1.f;
 
+                // rescales co-ordinates according to wavelength scale; red diffracts more so needs the largest mask
                 glm::vec2 point(xx, yy);
+                glm::vec2 scaled = point * scale;
+
                 bool inside = true;
                 for (auto i = 0; i < blades; i++)
                 {
                     const auto theta = 2.f * glm::pi<float>() * i / static_cast<float>(blades) + rotation_radians;
                     glm::vec2 polar(std::cos(theta), std::sin(theta));
 
-                    if (glm::dot(point, polar) > maximum) 
+                    if (glm::dot(scaled, polar) > maximum)
                     { 
                         inside = false; 
                         break;
@@ -550,8 +553,8 @@ namespace ir
         convolution = ifft2_inverse_to_real(fourier_a, P, Q);
 
         // IMPORTANT: MUST CROP PER KERNEL CENTER ELSE THE RESULT IS MISALIGNED AND OUT-OF-BOUNDS
-        const auto padding_x = (kernel.width + 1) / 2;
-        const auto padding_y = (kernel.height + 1) / 2;
+        const auto padding_x = kernel.width / 2;
+        const auto padding_y = kernel.height / 2;
 
         std::vector<Real> out(image.width * image.height, 0.f);
         for (auto y = 0; y < image.height; y++)
@@ -610,36 +613,42 @@ namespace ir
         };
     }
 
+    inline ImageBuffer<Real> compute_psf_for_wavelength(std::uint32_t blades, Real rotation, Real wavelength)
+    {
+        const Real alpha = wavelength / REFENCE_WAVELENGTH;
+        auto aperture = polygonal_aperture(blades, rotation, alpha);
+        return compute_psf(aperture);
+    }
+
     inline std::vector<glm::vec3> compute_diffraction(const std::vector<glm::vec3>& image, std::uint32_t width, std::uint32_t height, std::uint32_t blades, float rotation)
     {
-        auto aperture = polygonal_aperture(blades, rotation);
-        save_debug_image(aperture, "cpp_diffracted_aperture.png", false);
-
-        auto psf = compute_psf(aperture);
-        save_debug_image(psf, "cpp_diffracted_psf.png", false);
+        auto aperture_ref = polygonal_aperture(blades, rotation, 1.f);
+        save_debug_image(aperture_ref, "cpp_diffracted_aperture_ref.png", false);
+        auto psf_ref = compute_psf(aperture_ref);
+        save_debug_image(psf_ref, "cpp_diffracted_psf_ref.png", false);
 
         std::vector<Real> luminance(width * height, 0.f);
+        std::vector<glm::vec3> linearized(width * height, glm::vec3{ 0.f });
         for (auto i = 0; i < width * height; i++)
         {
-            // sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
-            const auto linearized = srgb_to_linear(image[i]);
-            const auto Y = .2126f * linearized.r + .7152f * linearized.g + .0722f * linearized.b;
-            luminance[i] = glm::pow(Y, 1 / 1.5f);
+            linearized[i] = srgb_to_linear(image[i]);
+            const auto Y = .2126f * linearized[i].r + .7152f * linearized[i].g + .0722f * linearized[i].b;
+            luminance[i] = glm::pow(Y, 1.5f);
         }
         save_debug_image(luminance, width, height, "cpp_diffracted_luminance.png", false);
 
-        normalize_by_percentiles(luminance, 0.1f, 99.9f);
+        normalize_by_percentiles(luminance, 0.001f, 99.999f);
         save_debug_image(luminance, width, height, "cpp_diffracted_normalized.png", false);
 
         std::vector<glm::vec3> result(width * height, glm::vec3{ 0.f });
         for (auto channel = 0; channel < 3; channel++)
         {
-            auto channel_psf = rescale_psf(psf, WAVELENGTHS[channel]);
+            auto channel_psf = compute_psf_for_wavelength(blades, rotation, WAVELENGTHS[channel]);
 
             std::vector<Real> image_channel(width * height, 0.f);
             for (auto i = 0; i < width * height; i++)
             {
-                image_channel[i] = image[i][channel] * luminance[i];
+                image_channel[i] = linearized[i][channel] * luminance[i];
             }
 
             ImageBuffer<Real> channel_buffer{ image_channel, width, height };
@@ -651,35 +660,19 @@ namespace ir
             }
         }
 
-        auto maximum_psf = 0.f;
-        for (auto& pixel : result)
-        {
-            maximum_psf = glm::max(maximum_psf, glm::compMax(pixel));
-        }
-        if (maximum_psf > 0.f)
-        {
-            for (auto& pixel : result) 
-            {
-                pixel /= maximum_psf;
-            }
-        }
-
         ImageBuffer<glm::vec3> raw_buffer{ result, width, height };
         save_debug_image(raw_buffer, "cpp_diffracted_convolution.png", false);
 
-        static constexpr auto MULTIPLIER = 3.f;
-
+        static constexpr auto MULTIPLIER = 1.f;
         for (auto i = 0; i < width * height; i++)
         {
             for (auto channel = 0; channel < 3; channel++)
             {
-                //const auto contribution = image[i][channel] + MULTIPLIER * result[i][channel];
-                const auto contribution = result[i][channel];
+                const auto contribution = linearized[i][channel] + MULTIPLIER * result[i][channel];
                 result[i][channel] = std::clamp(contribution, 0.f, 1.f);
             }
 
             result[i] = linear_to_srgb(result[i]);
-            //result[i] = glm::pow(result[i], glm::vec3{ 1.f / 2.2f });
         }
 
         ImageBuffer<glm::vec3> result_buffer{ result, width, height };
@@ -689,4 +682,4 @@ namespace ir
     }
 }
 
-#endif 
+#endif
