@@ -606,41 +606,40 @@ namespace ir
     public:
         void affect_diffraction(glm::vec3* image)
         {
-            static std::vector<Real> luminance(_width * _height, 0.f);
+            static ImageBuffer<Real> luminance(_width, _height);
             for (auto i = 0; i < _width * _height; i++)
             {
                 // sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
                 const auto Y = .2126f * image[i].r + .7152f * image[i].g + .0722f * image[i].b;
-                // relinearization with gamma
-                luminance[i] = std::pow(std::max(Y, 0.f), 1.5f);
+                luminance.data[i] = std::pow(Y, 3.f);
             }
+
+            normalize_by_percentiles(luminance.data, .1f, 99.9f);
 
             #ifdef ENABLE_DEBUG_IMAGES
 
-            ImageBuffer<Real> luminance_buffer{ luminance, _width, _height };
-            save_debug_image(luminance_buffer, "cpp_diffracted_luminance.png", false);
+            save_debug_image(luminance, "cpp_diffracted_luminance.png", false);
 
             #endif
 
             static std::vector<glm::vec3> result(_width * _height, glm::vec3{ 0.f });
             for (auto channel = 0; channel < CHANNELS; channel++)
             {
-                auto channel_psf = rescale_psf(psfs[channel], _width, _height, WAVELENGTHS[channel]);
-
-                #ifdef ENABLE_DEBUG_IMAGES
-
-                ImageBuffer<Real> channel_psf_buffer{ channel_psf, _psf_width, _psf_height };
-                save_debug_image(channel_psf_buffer, "cpp_diffracted_psf_channel_" + std::to_string(channel) + ".png", false);
-
-                #endif
-
                 static std::vector<Real> image_channel(_width * _height, 0.f);
                 for (auto i = 0; i < _width * _height; i++)
                 {
-                    image_channel[i] = image[i][channel] * luminance[i];
+                    image_channel[i] = image[i][channel] * luminance.data[i];
                 }
 
+                #ifdef ENABLE_DEBUG_IMAGES
+
+                ImageBuffer<Real> psf_buffer{ psfs[channel], _psf_width, _psf_height };
+                save_debug_image(psf_buffer, std::format("cpp_diffracted_psf_{}.png", channel), false);
+
+                #endif
+
                 ImageBuffer<Real> channel_buffer{ image_channel, _width, _height };
+                ImageBuffer<Real> channel_psf_buffer{ psfs[channel], _psf_width, _psf_height };
                 auto convolution = fft_convolve_cropped(channel_buffer, channel_psf_buffer);
 
                 for (auto i = 0; i < _width * _height; i++)
