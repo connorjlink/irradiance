@@ -5,6 +5,8 @@
 #include "glm/gtx/compatibility.hpp"
 #include "glm/gtc/random.hpp"
 
+#include "olcPixelGameEngine.h"
+
 #include "renderer.h"
 
 // renderer.cpp
@@ -876,6 +878,11 @@ namespace ir
 
         #pragma message("TODO: replace stof() with proper charconv parser")
 
+        auto load_texture = [&](const std::string& path)
+        {
+            return std::make_unique<olc::Sprite>(path);
+        };
+
         std::string line;
         while (std::getline(file, line))
         {
@@ -1008,6 +1015,7 @@ namespace ir
                     }
 
                     // NOTE: for simplicity, ignoring Ka, Tf, 
+                    // NOTE: for simplicity, ignoring illum, default to full PBR
 
                     if (material_tokens[0] == "newmtl")
                     {
@@ -1026,9 +1034,9 @@ namespace ir
                             material = std::nullopt;
                         }
                     }
-                    else if (material_tokens[0] == "Kd")
+                    else if (material_tokens[0] == "Kd" || material_tokens[0] == "Ks") 
                     {
-                        // albedo/diffuse colorization
+                        // albedo/diffuse colorization OR specular colorization
 
                         if (material_tokens.size() >= 4)
                         {
@@ -1045,25 +1053,62 @@ namespace ir
                     else if (material_tokens[0] == "map_Kd")
                     {
                         // albedo/diffuse texture mapping
-                    }
-                    else if (material_tokens[0] == "Ks")
-                    {
 
-                    }
-                    else if (material_tokens[0] == "Ns")
-                    {
-
+                        if (material_tokens.size() >= 2)
+                        {
+                            const auto texture_path = material_tokens[1];
+                            if (material.has_value())
+                            {
+                                // intentionally leaking!
+                                material->texture = load_texture(texture_path).release();
+                            }
+                        }
                     }
                     else if (material_tokens[0] == "d" || material_tokens[0] == "Tr")
                     {
+                        // dissolve/transmission
 
+                        if (material_tokens.size() >= 2)
+                        {
+                            auto transmission = 0.f;
+
+                            if (material_tokens[0] == "d")
+                            {
+                                // dissolve
+                                transmission = 1.f - std::stof(material_tokens[1]);
+                            }
+                            else
+                            {
+                                // transparency = 1 - dissolve
+                                transmission = std::stof(material_tokens[1]);
+                            }
+
+                            if (material.has_value())
+                            {
+                                material->transmission = glm::clamp(transmission, 0.f, 1.f);
+                            }
+                        }
                     }
-                    else if (material_tokens[0] == "illum")
+                    else if (material_tokens[0] == "Ns")
                     {
+                        // specular exponent, need to approximate map to roughness and metallic PBR parameters
 
+                        if (material_tokens.size() >= 2)
+                        {
+                            const auto specular_exponent = std::stof(material_tokens[1]);
+                            if (material.has_value())
+                            {
+                                const auto normalized = specular_exponent / 1000.f;
+                                
+                                material->metallicity = glm::clamp(normalized * normalized, 0.f, 1.f);
+                                material->roughness = glm::clamp(1.f - glm::sqrt(normalized), 0.f, 1.f);
+                            }
+                        }
                     }
                     else if (material_tokens[0] == "Ni")
                     {
+                        // index of refraction
+
                         if (material_tokens.size() >= 2)
                         {
                             const auto refraction_index = std::stof(material_tokens[1]);

@@ -32,7 +32,7 @@ namespace ir
     inline static constexpr Real WAVELENGTH_RESOLUTION = 10.0f;
     inline static constexpr Real WAVELENGTH_DELTA = (LONG_WAVELENGTH - SHORT_WAVELENGTH) / WAVELENGTH_RESOLUTION;
 
-    inline static constexpr int DIFFRACTION_RASTER_SIZE = 257;
+    inline static constexpr int DIFFRACTION_RASTER_SIZE = 512;
 
     template<typename T>
     struct ImageBuffer
@@ -648,6 +648,22 @@ namespace ir
                 }
             }
 
+            static constexpr auto MULTIPLIER = 10.f;
+
+            auto maximum_psf = 0.f;
+            for (auto& pixel : result)
+            {
+                maximum_psf = glm::max(maximum_psf, glm::compMax(pixel));
+            }
+            if (maximum_psf > 0.f)
+            {
+                for (auto& pixel : result) 
+                {
+                    pixel /= maximum_psf;
+                    pixel *= MULTIPLIER;
+                }
+            }
+
             #ifdef ENABLE_DEBUG_IMAGES
 
             ImageBuffer<glm::vec3> result_buffer{ result, _width, _height };
@@ -655,25 +671,11 @@ namespace ir
 
             #endif
 
-            auto maximum_psf = 0.f;
-            for (auto& pixel : result)
-            {
-                maximum_psf = glm::max(maximum_psf, glm::length(pixel));
-            }
-            if (maximum_psf > 0.f)
-            {
-                for (auto& pixel : result) 
-                {
-                    pixel /= maximum_psf;
-                }
-            }
-
-            static constexpr auto MULTIPLIER = 3.f;
             for (auto i = 0; i < _width * _height; i++)
             {
                 for (auto channel = 0; channel < CHANNELS; channel++)
                 {
-                    const auto contribution = image[i][channel] + MULTIPLIER * result[i][channel];
+                    const auto contribution = image[i][channel] * result[i][channel];
                     image[i][channel] = std::clamp(contribution, 0.f, 1.f);
                 }
             }
@@ -701,6 +703,7 @@ namespace ir
                 _psf_width = aperture.width;
                 _psf_height = aperture.height;
                 psfs[channel] = compute_psf(aperture.data, aperture.width, aperture.height);
+                normalize_by_percentiles(psfs[channel], .1f, 99.9f);
             }
         }
     };

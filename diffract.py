@@ -132,6 +132,11 @@ def compute_diffraction(image, blades, rotation):
     if max_psf > 0:
         result /= max_psf
 
+    convolution_srgb = np.vectorize(linear_to_srgb)(result)
+    out_array = (convolution_srgb * 255.0 + 0.5).astype(np.uint8)
+    out_file = f"diffracted_convolution.png"
+    Image.fromarray(out_array, mode='RGB').save(out_file)
+
     MULTIPLIER = 3.0
     out = image + MULTIPLIER * result
     return np.clip(out, 0, 1)
