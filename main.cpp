@@ -140,6 +140,7 @@ private:
 private:
     std::size_t reprojection_hits = 0;
     std::size_t reprojection_queries = 1;
+    Diffractor diffractor{};
 
 public:
     struct Emitter
@@ -745,6 +746,8 @@ public:
 
         reciprocal_dimensions = { 1.f / ScreenWidth(), 1.f / ScreenHeight() };
 
+        diffractor = Diffractor{ static_cast<std::uint32_t>(ScreenWidth()), static_cast<std::uint32_t>(ScreenHeight()), 7, 0.f };
+
         shutter_speed = SHUTTER_SPEEDS[shutter_index];
         shutter_history = {};
         capture_shutter(now);
@@ -1094,21 +1097,12 @@ public:
         {
             // diffract current framebuffer once
 
-            const auto blades = 7;
-            const auto rotation = -glm::radians(14.f * 360.f / blades);
+            diffractor.affect_diffraction(frame_buffer);
 
-            const auto number = ScreenWidth() * ScreenHeight();
-            std::vector<glm::vec3> original_frame_buffer(number);
-            std::copy(frame_buffer, frame_buffer + number, original_frame_buffer.data());
-
-            auto diffraction = compute_diffraction(original_frame_buffer, ScreenWidth(), ScreenHeight(), blades, rotation);
-            assert(diffraction.size() == number);
-            for (auto i = 0; i < number; i++)
+            for (auto i = 0; i < ScreenWidth() * ScreenHeight(); i++)
             {
-                reprojection_buffer[i].color = diffraction[i];
-                frame_buffer[i] = diffraction[i];
+                reprojection_buffer[i].color = frame_buffer[i];
             }
-            std::fill(sample_counts.begin(), sample_counts.end(), 1.f);
         }
             
         if (GetKey(olc::Key::T).bPressed)
