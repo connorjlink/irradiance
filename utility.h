@@ -132,6 +132,25 @@ namespace ir
         auto begin() { return data.begin(); }
         auto end() { return data.end(); }
     };
+
+    // (c) Connor J. Link. Attribution from personal work outside of ISU.
+    // Utility function that does not meaningfully affect project functionality.
+    template<typename T>
+    struct ParseResult
+    {
+    	bool success;
+    	T result;
+    };
+    template<typename T>
+    ParseResult<T> from_string(const std::string& input)
+    {
+    	int result = 0;
+    	const char* begin = input.data();
+    	const char* end = begin + input.size();
+    	auto [ptr, ec] = std::from_chars(begin, end, result);
+    	bool success = (ec == std::errc() && ptr == end);
+    	return { success, result };
+    }
 }
 
 #endif

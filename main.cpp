@@ -1395,23 +1395,6 @@ public:
     }
 };
 
-// (c) Connor J. Link. Attribution from personal work outside of ISU.
-// Utility function that does not meaningfully affect project functionality.
-struct ParseResult
-{
-	bool success;
-	int result;
-};
-ParseResult parse_int(const std::string& input)
-{
-	int result = 0;
-	const char* begin = input.data();
-	const char* end = begin + input.size();
-	auto [ptr, ec] = std::from_chars(begin, end, result);
-	bool success = (ec == std::errc() && ptr == end);
-	return { success, result };
-}
-
 int main(int argc, char** argv)
 {
     int width = 300, height = 300;
@@ -1428,7 +1411,7 @@ int main(int argc, char** argv)
 
             if (name == "-width")
             {
-                const auto result = parse_int(value);
+                const auto result = from_string<int>(value);
                 if (result.success)
                 {
                     width = result.result;
@@ -1436,7 +1419,7 @@ int main(int argc, char** argv)
             }
             else if (name == "-height")
             {
-                const auto result = parse_int(value);
+                const auto result = from_string<int>(value);
                 if (result.success)
                 {
                     height = result.result;
@@ -1444,7 +1427,7 @@ int main(int argc, char** argv)
             }
             else if (name == "-bounces")
             {
-                const auto result = parse_int(value);
+                const auto result = from_string<int>(value);
                 if (result.success)
                 {
                     _bounces = result.result;
@@ -1452,7 +1435,7 @@ int main(int argc, char** argv)
             }
             else if (name == "-samples")
             {
-                const auto result = parse_int(value);
+                const auto result = from_string<int>(value);
                 if (result.success)
                 {
                     _samples = result.result;

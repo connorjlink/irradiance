@@ -1,5 +1,7 @@
 #include <fstream>
 #include <cctype>
+#include <filesystem>
+#include <unordered_map>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/compatibility.hpp"
@@ -8,6 +10,7 @@
 #include "olcPixelGameEngine.h"
 
 #include "renderer.h"
+#include "utility.h"
 
 // renderer.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -844,7 +847,7 @@ namespace ir
         local_intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ local_intersection.normal, 0.f } });
 
         local_intersection.depth = glm::length(world_space_entry_position - ray.origin);
-        if (local_space_exit != std::numeric_limits<float>::infinity())
+        if (local_space_exit != std::numeric_limits<Real>::infinity())
         {
             const auto delta = local_space_exit - local_space_entry;
             const auto local_space_exit_position = local_space_entry_position + delta * local_space_ray.direction;
@@ -853,6 +856,37 @@ namespace ir
         }
 
         return local_intersection;
+    }
+
+    // Full and complete credit to Nemo https://stackoverflow.com/questions/33511753/how-can-i-generate-a-tuple-of-n-type-ts
+    template<typename T, unsigned N, typename... Ts>
+    struct generate_tuple_type
+    {
+        typedef typename generate_tuple_type<T, N-1, T, Ts...>::type type;
+    };
+
+    template<typename T, typename... Ts>
+    struct generate_tuple_type<T, 0, Ts...>
+    {
+        typedef std::tuple<Ts...> type;
+    };
+
+
+    template<typename U, typename... Ts>
+    generate_tuple_type<U, sizeof...(Ts)> from_string(Ts&&... s)
+    {
+        [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        {
+            const auto result = from_string<U>(std::forward<Ts>(s));
+            if (!result.success)
+            {
+                std::println("Warning: invalid 3-space co-ordinate `{}`", std::get<Is>(std::forward_as_tuple(s...)));
+                return U{};
+            }
+
+            return result.result;
+
+        }(std::make_index_sequence<sizeof...(Ts)>{});
     }
 
     // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
@@ -871,16 +905,22 @@ namespace ir
         std::vector<glm::vec3> normals{};
         std::vector<glm::vec2> texture_coordinates{};
 
-        std::vector<PBRMaterial> materials{};
+        std::unordered_map<std::string, PBRMaterial> materials{};
 
         // NOTE: for simplicity, ignore groups and objects
         // NOTE: for simplicity, always assume "s 1" to avoid having to track per group or object
 
-        #pragma message("TODO: replace stof() with proper charconv parser")
+        #warning TODO USE SHARED POINTERS WITH IMPROVED OWNERSHIP SEMANTICS AMONG PRIMITIVES (WEAK PTR?)
+        std::unordered_map<std::string, olc::Sprite*> texture_cache{};
 
         auto load_texture = [&](const std::string& path)
         {
-            return std::make_unique<olc::Sprite>(path);
+            if (!std::filesystem::exists(filepath))
+            {
+                std::println("Warning: non-existent texture file `{}`; falling back to default", path)
+            }
+
+            return new olc::Sprite{ path };
         };
 
         std::string line;
@@ -926,15 +966,42 @@ namespace ir
 
                         if (!parts.empty() && !parts[0].empty()) 
                         {
-                            vi = std::stoi(parts[0]);
+                            const auto result = from_string<int>(parts[0]);
+                            if (!result.success)
+                            {
+                                std::println("Warning: invalid vertex index `{}` in face specification; skipping face", s);
+                                vi = 0;
+                                ni = 0;
+                                return;
+                            }
+
+                            ni = result.result;
                         }
                         if (parts.size() == 3 && !parts[2].empty()) 
                         {
-                            ni = std::stoi(parts[2]);
+                            const auto result = from_string<int>(parts[2]);
+                            if (!result.success)
+                            {
+                                std::println("Warning: invalid normal index `{}` in face specification; skipping face", s);
+                                vi = 0;
+                                ni = 0;
+                                return;
+                            }
+
+                            ni = result.result;
                         }
                         else if (parts.size() == 2 && !parts[1].empty()) 
                         {
-                            ni = std::stoi(parts[1]);
+                            const auto result = from_string<int>(parts[1]);
+                            if (!result.success)
+                            {
+                                std::println("Warning: invalid normal index `{}` in face specification; skipping face", s);
+                                vi = 0;
+                                ni = 0;
+                                return;
+                            }
+
+                            ni = result.result;
                         }
                     };
 
@@ -973,17 +1040,40 @@ namespace ir
                 else if (tokens.size() == 5)
                 {
                     // quadrilateral, 4 vertices to form the face
-                    const auto face0 = std::stoi(tokens[1]);
-                    const auto face1 = std::stoi(tokens[2]);
-                    [[maybe_unused]] const auto face2 = std::stoi(tokens[3]);
-                    const auto face3 = std::stoi(tokens[4]);
+                    const auto face0 = from_string<int>(tokens[1]);
+                    if (!face0.success || face0.result <= 0 || face0.result > static_cast<int>(vertices.size()))
+                    {
+                        std::println("Warning: invalid vertex index `{}` in face specification; skipping face", tokens[1]);
+                        continue;
+                    }
+
+                    const auto face1 = from_string<int>(tokens[2]);
+                    if (!face1.success || face1.result <= 0 || face1.result > static_cast<int>(vertices.size()))
+                    {
+                        std::println("Warning: invalid vertex index `{}` in face specification; skipping face", tokens[2]);
+                        continue;
+                    }
+
+                    [[maybe_unused]] const auto face2 = from_string<int>(tokens[3]);
+                    if (!face2.success || face2.result <= 0 || face2.result > static_cast<int>(vertices.size()))
+                    {   
+                        std::println("Warning: invalid vertex index `{}` in face specification; skipping face", tokens[3]);
+                        continue;
+                    }
+
+                    const auto face3 = from_string<int>(tokens[4]);
+                    if (!face3.success || face3.result <= 0 || face3.result > static_cast<int>(vertices.size()))
+                    {
+                        std::println("Warning: invalid vertex index `{}` in face specification; skipping face", tokens[4]);
+                        continue;
+                    }
 
                     // OBJ format note: consecutive vertices connected in polygon specification per https://en.wikipedia.org/wiki/Wavefront_.obj_file
                     objects.emplace_back(new Quadrilateral
                     {
-                        vertices[face0 - 1],
-                        vertices[face1 - 1],
-                        vertices[face3 - 1],
+                        vertices[face0.result - 1],
+                        vertices[face1.result - 1],
+                        vertices[face3.result - 1],
                         default_material,
                     });
                 }
@@ -991,7 +1081,17 @@ namespace ir
             else if (tokens[0] == "usemtl")
             {
                 const auto& material_name = tokens[1];
-                #warning "TODO: implement material usage"
+
+                if (materials.contains(material_name))
+                {
+                    const auto reference = materials.at(material_name);
+                    #warning TODO INTEGRATE MATERIAL REFERENCE INTO SUBSEQUENT PRIMITIVES. SHOULD THIS TRACK WITH A SINGLE LOOP-CARRIED VARIABLE?
+                }
+                else
+                {
+                    std::println("Warning: undefined material `{}`; falling back to default", material_name);
+                    materials[material_name] = default_material;
+                }
             }
             else if (tokens[0] == "mtllib")
             {
@@ -1016,12 +1116,13 @@ namespace ir
 
                     // NOTE: for simplicity, ignoring Ka, Tf, 
                     // NOTE: for simplicity, ignoring illum, default to full PBR
+                    // NOTE: for simplicity, ignoring map_Ka, map_Ks, map_Ns, map_d, map_bump, bump
 
                     if (material_tokens[0] == "newmtl")
                     {
                         if (material.has_value())
                         {
-                            materials.push_back(material.value());
+                            materials.emplace(material.value());
                         }
 
                         if (material_tokens.size() >= 2)
@@ -1040,13 +1141,30 @@ namespace ir
 
                         if (material_tokens.size() >= 4)
                         {
-                            const auto r = std::stof(material_tokens[1]);
-                            const auto g = std::stof(material_tokens[2]);
-                            const auto b = std::stof(material_tokens[3]);
+                            const auto red = from_string<Real>(material_tokens[1]);
+                            if (!red.success)
+                            {
+                                std::println("Warning: invalid red color `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
+                                continue;
+                            }
+
+                            const auto green = from_string<Real>(material_tokens[2]);
+                            if (!green.success)
+                            {
+                                std::println("Warning: invalid green color `{}` in material `{}`", material_tokens[2], material.has_value() ? material->name : "<anonymous>");
+                                continue;
+                            }
+
+                            const auto blue = from_string<Real>(material_tokens[3]);
+                            if (!blue.success)
+                            {
+                                std::println("Warning: invalid blue color `{}` in material `{}`", material_tokens[3], material.has_value() ? material->name : "<anonymous>");
+                                continue;
+                            }
 
                             if (material.has_value())
                             {
-                                material->albedo = glm::clamp(glm::vec3{ r, g, b }, glm::vec3{ 0.f }, glm::vec3{ 1.f });
+                                material->albedo = glm::clamp(glm::vec3{ red.result, green.result, blue.result }, glm::vec3{ 0.f }, glm::vec3{ 1.f });
                             }
                         }
                     }
@@ -1059,8 +1177,18 @@ namespace ir
                             const auto texture_path = material_tokens[1];
                             if (material.has_value())
                             {
-                                // intentionally leaking!
-                                material->texture = load_texture(texture_path).release();
+                                if (texture_cache.contains(texture_path))
+                                {
+                                    // intentionally leaking!
+                                    material->texture = texture_cache.at(texture_path);
+                                }
+                                else
+                                {
+                                    texture_cache[texture_path] = load_texture(texture_path);
+                                    material->texture = texture_cache.at(texture_path);
+                                }
+
+                                material->texture = load_texture(texture_path);
                             }
                         }
                     }
@@ -1075,12 +1203,26 @@ namespace ir
                             if (material_tokens[0] == "d")
                             {
                                 // dissolve
-                                transmission = 1.f - std::stof(material_tokens[1]);
+                                const auto dissolve = from_string<Real>(material_tokens[1]);
+                                if (!dissolve.success)
+                                {
+                                    std::println("Warning: invalid dissolve `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
+                                    continue;
+                                }
+
+                                transmission = 1.f - dissolve.result;
                             }
                             else
                             {
                                 // transparency = 1 - dissolve
-                                transmission = std::stof(material_tokens[1]);
+                                const auto dissolve = from_string<Real>(material_tokens[1]);
+                                if (!dissolve.success)
+                                {
+                                    std::println("Warning: invalid transparency `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
+                                    continue;
+                                }
+
+                                transmission = dissolve.result;
                             }
 
                             if (material.has_value())
@@ -1095,10 +1237,16 @@ namespace ir
 
                         if (material_tokens.size() >= 2)
                         {
-                            const auto specular_exponent = std::stof(material_tokens[1]);
+                            const auto specular_exponent = from_string<Real>(material_tokens[1]);
+                            if (!specular_exponent.success)
+                            {
+                                std::println("Warning: invalid specular exponent `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
+                                continue;
+                            }
+
                             if (material.has_value())
                             {
-                                const auto normalized = specular_exponent / 1000.f;
+                                const auto normalized = specular_exponent.result / 1000.f;
                                 
                                 material->metallicity = glm::clamp(normalized * normalized, 0.f, 1.f);
                                 material->roughness = glm::clamp(1.f - glm::sqrt(normalized), 0.f, 1.f);
@@ -1111,10 +1259,16 @@ namespace ir
 
                         if (material_tokens.size() >= 2)
                         {
-                            const auto refraction_index = std::stof(material_tokens[1]);
+                            const auto refraction_index = from_string<Real>(material_tokens[1]);
+                            if (!refraction_index.success)
+                            {
+                                std::println("Warning: invalid refraction index `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
+                                continue;
+                            }
+
                             if (material.has_value())
                             {
-                                material->refraction_index = refraction_index;
+                                material->refraction_index = refraction_index.result;
                             }
                         }
                     }
