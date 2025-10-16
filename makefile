@@ -1,7 +1,7 @@
-LIBS = -framework OpenGL -framework GLUT -framework Carbon
+LIBS = -framework OpenGL -framework GLUT -framework Carbon -L/usr/local/lib -lfftw3f
 #INCLUDES = -I $(HOME)/vcpkg/installed/arm64-osx/include
-INCLUDES = 
-EXTRAS = -std=c++23 -fexperimental-library -march=native -mtune=native -D _LIBCPP_ENABLE_EXPERIMENTAL -D GLM_ENABLE_EXPERIMENTAL -D GLM_FORCE_NEON -Wno-explicit-specialization-storage-class -Wno-macro-redefined -Wno-deprecated-declarations -I/usr/local/include -L/usr/local/lib -lfftw3f
+INCLUDES = -I/usr/local/include
+EXTRAS = -std=c++23 -fexperimental-library -march=native -mtune=native -D _LIBCPP_ENABLE_EXPERIMENTAL -D GLM_ENABLE_EXPERIMENTAL -D GLM_FORCE_NEON -Wno-explicit-specialization-storage-class -Wno-macro-redefined -Wno-deprecated-declarations
 # -stdlib=libc++ 
 
 build:

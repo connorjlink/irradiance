@@ -5,6 +5,7 @@
 #include <ranges>
 #include <string>
 #include <vector>
+#include <charconv>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/glm.hpp"
@@ -144,7 +145,7 @@ namespace ir
     template<typename T>
     ParseResult<T> from_string(const std::string& input)
     {
-    	int result = 0;
+    	T result{};
     	const char* begin = input.data();
     	const char* end = begin + input.size();
     	auto [ptr, ec] = std::from_chars(begin, end, result);

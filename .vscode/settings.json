@@ -57,6 +57,7 @@
         "algorithm": "cpp",
         "cstddef": "cpp",
         "__config": "cpp",
-        "numeric": "cpp"
+        "numeric": "cpp",
+        "tuple": "cpp"
     }
 }

@@ -1,6 +1,9 @@
 #include <fstream>
 #include <cctype>
 #include <filesystem>
+#include <tuple>
+#include <utility>
+#include <map>
 #include <unordered_map>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -873,19 +876,28 @@ namespace ir
 
 
     template<typename U, typename... Ts>
-    generate_tuple_type<U, sizeof...(Ts)> from_string(Ts&&... s)
+    typename generate_tuple_type<U, sizeof...(Ts)>::type from_strings(Ts&&... ts)
     {
-        [&]<std::size_t... Is>(std::index_sequence<Is...>)
+        auto arguments = std::forward_as_tuple(std::forward<Ts>(ts)...);
+
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>)
         {
-            const auto result = from_string<U>(std::forward<Ts>(s));
-            if (!result.success)
+            using tuple_t = typename generate_tuple_type<U, sizeof...(Ts)>::type;
+
+            return tuple_t
             {
-                std::println("Warning: invalid 3-space co-ordinate `{}`", std::get<Is>(std::forward_as_tuple(s...)));
-                return U{};
-            }
+                ([&]() -> U
+                {
+                    const auto result = from_string<U>(std::get<Is>(arguments));
+                    if (!result.success)
+                    {
+                        std::println("Warning: invalid 3-space co-ordinate `{}`", std::get<Is>(arguments));
+                        return U{};
+                    }
 
-            return result.result;
-
+                    return result.result;
+                })()...
+            };
         }(std::make_index_sequence<sizeof...(Ts)>{});
     }
 
@@ -905,22 +917,32 @@ namespace ir
         std::vector<glm::vec3> normals{};
         std::vector<glm::vec2> texture_coordinates{};
 
-        std::unordered_map<std::string, PBRMaterial> materials{};
+        std::map<std::string, PBRMaterial> materials{};
 
         // NOTE: for simplicity, ignore groups and objects
         // NOTE: for simplicity, always assume "s 1" to avoid having to track per group or object
 
         #warning TODO USE SHARED POINTERS WITH IMPROVED OWNERSHIP SEMANTICS AMONG PRIMITIVES (WEAK PTR?)
-        std::unordered_map<std::string, olc::Sprite*> texture_cache{};
+        std::map<std::string, olc::Sprite*> texture_cache{};
 
         auto load_texture = [&](const std::string& path)
         {
             if (!std::filesystem::exists(filepath))
             {
-                std::println("Warning: non-existent texture file `{}`; falling back to default", path)
+                std::println("Warning: non-existent texture file `{}`; falling back to default", path);
             }
 
             return new olc::Sprite{ path };
+        };
+
+        auto parse_and_emplace = [&]<typename T>(auto&&... arguments)
+        {
+            const auto result = from_strings<T>(std::forward<decltype(arguments)>(arguments)...);
+            
+            std::apply([&](auto&&... results)
+            {
+                vertices.emplace_back(std::forward<decltype(results)>(results)...);
+            }, std::move(result));
         };
 
         std::string line;
@@ -937,18 +959,21 @@ namespace ir
 
             if (tokens[0] == "v" && tokens.size() >= 4)
             {
+                // apple clang doesn't yet support C++17 std::from_chars<T> requires std::is_floating_point_v<T>(), so the following line does not work
+                //parse_and_emplace.template operator()<Real>(tokens[1], tokens[2], tokens[3]);
                 const auto x = std::stof(tokens[1]);
                 const auto y = std::stof(tokens[2]);
                 const auto z = std::stof(tokens[3]);
-
                 vertices.emplace_back(x, y, z);
             }
             else if (tokens[0] == "vn" && tokens.size() >= 4)
             {
+                // apple clang doesn't yet support C++17 std::from_chars<T> requires std::is_floating_point_v<T>(), so the following line does not work
+                //const auto [x, y, z] = from_strings<Real>(tokens[1], tokens[2], tokens[3]);
                 const auto x = std::stof(tokens[1]);
                 const auto y = std::stof(tokens[2]);
                 const auto z = std::stof(tokens[3]);
-
+                vertices.emplace_back(x, y, z);
                 normals.emplace_back(x, y, z);
             }
             else if (tokens[0] == "f" && tokens.size() >= 4)
@@ -975,7 +1000,7 @@ namespace ir
                                 return;
                             }
 
-                            ni = result.result;
+                            vi = result.result;
                         }
                         if (parts.size() == 3 && !parts[2].empty()) 
                         {
@@ -1122,7 +1147,12 @@ namespace ir
                     {
                         if (material.has_value())
                         {
-                            materials.emplace(material.value());
+                            if (materials.contains(material->name))
+                            {
+                                std::println("Warning: duplicate material definition `{}`; overwriting previous definition", material->name);
+                            }
+
+                            materials[material->name] = *material;
                         }
 
                         if (material_tokens.size() >= 2)
@@ -1141,21 +1171,24 @@ namespace ir
 
                         if (material_tokens.size() >= 4)
                         {
-                            const auto red = from_string<Real>(material_tokens[1]);
+                            //const auto red = from_string<Real>(material_tokens[1]);
+                            const auto red = ParseResult{ true, std::stof(material_tokens[1]) };
                             if (!red.success)
                             {
                                 std::println("Warning: invalid red color `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
                                 continue;
                             }
 
-                            const auto green = from_string<Real>(material_tokens[2]);
+                            //const auto green = from_string<Real>(material_tokens[2]);
+                            const auto green = ParseResult{ true, std::stof(material_tokens[2]) };
                             if (!green.success)
                             {
                                 std::println("Warning: invalid green color `{}` in material `{}`", material_tokens[2], material.has_value() ? material->name : "<anonymous>");
                                 continue;
                             }
 
-                            const auto blue = from_string<Real>(material_tokens[3]);
+                            //const auto blue = from_string<Real>(material_tokens[3]);
+                            const auto blue = ParseResult{ true, std::stof(material_tokens[3]) };
                             if (!blue.success)
                             {
                                 std::println("Warning: invalid blue color `{}` in material `{}`", material_tokens[3], material.has_value() ? material->name : "<anonymous>");
@@ -1203,7 +1236,8 @@ namespace ir
                             if (material_tokens[0] == "d")
                             {
                                 // dissolve
-                                const auto dissolve = from_string<Real>(material_tokens[1]);
+                                //const auto dissolve = from_string<Real>(material_tokens[1]);
+                                const auto dissolve = ParseResult{ true, std::stof(material_tokens[1]) };
                                 if (!dissolve.success)
                                 {
                                     std::println("Warning: invalid dissolve `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
@@ -1215,7 +1249,8 @@ namespace ir
                             else
                             {
                                 // transparency = 1 - dissolve
-                                const auto dissolve = from_string<Real>(material_tokens[1]);
+                                //const auto dissolve = from_string<Real>(material_tokens[1]);
+                                const auto dissolve = ParseResult{ true, std::stof(material_tokens[1]) };
                                 if (!dissolve.success)
                                 {
                                     std::println("Warning: invalid transparency `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
@@ -1237,7 +1272,8 @@ namespace ir
 
                         if (material_tokens.size() >= 2)
                         {
-                            const auto specular_exponent = from_string<Real>(material_tokens[1]);
+                            //const auto specular_exponent = from_string<Real>(material_tokens[1]);
+                            const auto specular_exponent = ParseResult{ true, std::stof(material_tokens[1]) };
                             if (!specular_exponent.success)
                             {
                                 std::println("Warning: invalid specular exponent `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
@@ -1259,7 +1295,8 @@ namespace ir
 
                         if (material_tokens.size() >= 2)
                         {
-                            const auto refraction_index = from_string<Real>(material_tokens[1]);
+                            //const auto refraction_index = from_string<Real>(material_tokens[1]);
+                            const auto refraction_index = ParseResult{ true, std::stof(material_tokens[1]) };
                             if (!refraction_index.success)
                             {
                                 std::println("Warning: invalid refraction index `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
@@ -1273,7 +1310,6 @@ namespace ir
                         }
                     }
                 }
-
             }
         }
 
