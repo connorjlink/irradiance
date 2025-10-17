@@ -15,6 +15,7 @@
 #include <execution>
 #include <memory>
 #include <deque>
+#include <numbers>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_NEON
@@ -166,6 +167,40 @@ public:
 
     Real now = 0.f;
     std::deque<ShutterSample> shutter_history;
+
+private:
+    glm::vec2 sample_polygon(std::uint32_t blades, Real rotation)
+    {
+        // back solving the following equation:
+        // (c) Connor J. Link https://www.desmos.com/calculator/kigtnvrkcm
+
+        // choose a random triangle sector
+
+        const auto k = glm::linearRand<std::uint32_t>(0, blades - 1);
+        const auto delta = glm::two_pi<Real>() / blades;
+
+        const auto theta0 = rotation + k * delta;
+        const auto theta1 = rotation + (k + 1) * delta;
+
+        // use triangle UV sampling
+
+        auto u = glm::linearRand(0.0f, 1.0f);
+        auto v = glm::linearRand(0.0f, 1.0f);
+
+        if (u + v > 1.0f)
+        {
+            u = 1.0f - u;
+            v = 1.0f - v;
+        }
+    
+        const auto v1 = glm::vec2{ glm::cos(theta0), glm::sin(theta0) };
+        const auto v2 = glm::vec2{ glm::cos(theta1), glm::sin(theta1) };
+    
+        return u * v1 + v * v2;;
+    };
+
+    static constexpr std::uint32_t Blades = 7;
+    static constexpr Real Rotation = std::numbers::pi + (std::numbers::pi / (2.f * Blades));
 
 public:
     void capture_shutter(Real timestamp)
@@ -710,6 +745,8 @@ public:
 public:
 	bool OnUserCreate() override
 	{
+        Clear(olc::BLACK);
+
         const auto number = ScreenWidth() * ScreenHeight();
         
         rays = new Ray[number];
@@ -1206,7 +1243,9 @@ public:
 
                 if (enable_dof)
                 {
-                    const auto disk_sample = glm::diskRand(aperture_radius);
+                    //const auto disk_sample = glm::diskRand(aperture_radius);
+                    const auto disk_sample = sample_polygon(Blades, Rotation) * aperture_radius;
+
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
                     jittered_ray.origin += compute_right(then.yaw, then.pitch) * disk_sample.x + UP * disk_sample.y;
                     // NOTE: rays do not arrive to the camera parallel to the sensor, so must compute the corresponding focal point in world space first                    
@@ -1364,6 +1403,14 @@ public:
                 Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
             }
         }
+
+        // NOTE: USE ONLY FOR DEBUGGING THE APERTURE CODE
+        // for (auto i = 0; i < 1000; i++)
+        // {
+        //     const auto sample = sample_polygon(Blades, Rotation);
+        //     const auto xy = (sample + glm::vec2{ 1.f }) * .5f;
+        //     Draw(static_cast<int>(xy.x * ScreenWidth()), static_cast<int>(xy.y * ScreenHeight()), olc::WHITE);
+        // }
 
         if (!dirty && last_dirty && !GetKey(olc::Key::Q).bHeld)
         {
