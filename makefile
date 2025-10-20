@@ -32,6 +32,10 @@ cornell:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL
 	./irradiance -width=400 -height=300 -bounces=5 -samples=1
 
+cornell2:
+	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL2
+	./irradiance -width=400 -height=300 -bounces=5 -samples=1
+
 clean:
 	rm -f irradiance
 	rm -rf *.o

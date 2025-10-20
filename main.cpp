@@ -173,6 +173,7 @@ private:
     {
         // back solving the following equation:
         // (c) Connor J. Link https://www.desmos.com/calculator/kigtnvrkcm
+        // credit to Dr. Barker for a helpful derivation https://www.youtube.com/watch?v=AoOv6bWg9lk
 
         // choose a random triangle sector
 
@@ -290,9 +291,10 @@ public:
 
     glm::vec3 gamma_correct(const glm::vec3& color)
     {
-        // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
+        // Gamma correction, 2.2 common for sRGB, but lower looks more pleasing due to MacOS and OLCPGE color handling https://en.wikipedia.org/wiki/Gamma_correction
 
-        const auto corrected = glm::pow(color, glm::vec3{ 1.f });
+        //const auto corrected = glm::pow(color, glm::vec3{ 1 / 1.5f });
+        const auto corrected = color;
         return glm::clamp(corrected, 0.f, 1.f);
     }
 
@@ -481,18 +483,21 @@ public:
                 random_in_unit_sphere = -random_in_unit_sphere;
             }
 
-            const auto& mat = nearest_intersection.material;
+            const auto& material = nearest_intersection.material;
 
             const auto normal_angle = glm::clamp(glm::dot(normal, ray.direction), 0.f, 1.f);
             
             // Fresnel term with Schlick's approximation
-            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, mat.metallicity);
+            auto dielectric_reflectance = (1.f - material.refraction_index) / (1.f + material.refraction_index);
+            dielectric_reflectance *= dielectric_reflectance;
+            // using an arbitrary base reflectance of 4% for non-metals, reasonable according to https://docs.omniverse.nvidia.com/materials-and-rendering/latest/templates/parameters/OmniPBR_Reflectivity.html
+            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, dielectric_reflectance);
             const auto F = compute_fresnel_F(F0, 1.f - normal_angle);
 
-            const auto metal_probability = mat.metallicity;
-            const auto reflection_probability = (1.f - mat.metallicity) * glm::compMax(F) + mat.metallicity;
-            const auto refraction_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * mat.transmission;
-            const auto diffuse_probability = (1.f - mat.metallicity) * (1.f - glm::compMax(F)) * (1.f - mat.transmission);
+            const auto metal_probability = material.metallicity;
+            const auto reflection_probability = (1.f - material.metallicity) * glm::compMax(F) + material.metallicity;
+            const auto refraction_probability = (1.f - material.metallicity) * (1.f - glm::compMax(F)) * material.transmission;
+            const auto diffuse_probability = (1.f - material.metallicity) * (1.f - glm::compMax(F)) * (1.f - material.transmission);
 
             const auto total = metal_probability + reflection_probability + refraction_probability + diffuse_probability;
 
@@ -514,9 +519,9 @@ public:
                 const auto R = reflection; 
                 const auto H = glm::normalize(R + V);
 
-                const auto D = compute_GGX_D(H, normal, mat.roughness);
+                const auto D = compute_GGX_D(H, normal, material.roughness);
                 const auto F = compute_fresnel_F(F0, glm::max(0.f, glm::dot(H, V)));
-                const auto G = compute_smith_G(R, V, normal, mat.roughness);
+                const auto G = compute_smith_G(R, V, normal, material.roughness);
 
                 const auto reflection_angle = glm::max(0.f, glm::dot(normal, R));
                 const auto view_angle = glm::max(0.f, glm::dot(normal, V));
@@ -567,7 +572,7 @@ public:
                 // FUTURE: sample according to roughness and anisotropy (need surface anisotropy tangent basis, e.g., metal grain)
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
 
-                absorption = specular * glm::vec3{ mat.transmission };
+                absorption = specular * glm::vec3{ material.transmission };
                 weight = reflection_weight;
             }
             else if (random < metal_weight + reflection_weight + refraction_weight)
@@ -595,7 +600,7 @@ public:
 
                 // Beer-Lambert attenuation (re-using albedo as absorption)
                 const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
-                const auto attenuation = glm::exp(-mat.albedo * attenuation_distance);
+                const auto attenuation = glm::exp(-material.albedo * attenuation_distance);
 
                 absorption = attenuation;
                 weight = refraction_weight;
@@ -791,51 +796,9 @@ public:
 
         initialize_textures();
 
-    #ifndef CORNELL
-        scene_instances.emplace_back(test_spheres());
+    #ifdef CORNELL
 
-        static const auto utah = teapot(PBRMaterial
-        {
-            .albedo = glm::vec3{ .9f, .2f, .9f },
-            .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = .5f,
-            .refraction_index = 1.5f,
-            .anisotropy = 0.f,
-            .roughness = .02f,
-            .transmission = 0.f,
-        });
-        static const auto utah_instance = new MeshInstance
-        {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
-            utah
-        };
-        scene_instances.emplace_back(utah_instance);
 
-        // NOTE: for radiance cache testing only!!
-        // scene_instances.emplace_back(new MeshInstance
-        // {
-        //     glm::identity<glm::mat4>(),
-        //     Mesh
-        //     {
-        //         new Cuboid 
-        //         {
-        //             glm::vec3{ -20.f },
-        //             glm::vec3{ 40.f, 40.f, 40.f },
-        //             PBRMaterial
-        //             {
-        //                 .albedo = glm::vec3{ .9f, .0f, .0f },
-        //                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
-        //                 .metallicity = 0.f,
-        //                 .refraction_index = 1.5f,
-        //                 .anisotropy = 0.f,
-        //                 .roughness = .5f,
-        //                 .transmission = .99f,
-        //             }
-        //         }
-        //     }
-        // });
-
-    #else
         scene_instances.emplace_back(cornell_box());
 
         static const auto sphere = Mesh
@@ -924,6 +887,86 @@ public:
             suzanne
         };
         scene_instances.emplace_back(monkey_instance);
+
+    #elifdef CORNELL2
+
+        position = glm::vec3{ 0.f, .5f, -.9f };
+        yaw_degrees = 0.f;
+        pitch_degrees = 0.f;
+
+        scene_instances.emplace_back(cornell_box());
+
+        static const auto material = PBRMaterial
+        {
+            .albedo = glm::vec3{ 1.f, 1.f, 1.f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = 0.f,
+            .anisotropy = 0.f,
+            .roughness = .6f,
+        };
+
+        const auto cuboid = cube(material);
+        const auto cuboid_instance = new MeshInstance
+        {
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .25f, .25f, .25f }), glm::vec3{ -2.f, 4.f, 1.f }), glm::radians(35.f), glm::vec3{ 0.f, 1.f, 0.f }),
+            cuboid
+        };
+
+        scene_instances.emplace_back(cuboid_instance);
+
+        const auto cuboid2 = cube(material);
+        static const auto cuboid2_instance = new MeshInstance
+        {
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .2f, .4f, .2f }), glm::vec3{ 2.f, 2.f, 1.f }), glm::radians(-25.f), glm::vec3{ 0.f, 1.f, 0.f }),
+            cuboid2
+        };
+
+        scene_instances.emplace_back(cuboid2_instance);
+
+    #else
+        
+        scene_instances.emplace_back(test_spheres());
+
+        static const auto utah = teapot(PBRMaterial
+        {
+            .albedo = glm::vec3{ .9f, .2f, .9f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = .5f,
+            .refraction_index = 1.5f,
+            .anisotropy = 0.f,
+            .roughness = .02f,
+            .transmission = 0.f,
+        });
+        static const auto utah_instance = new MeshInstance
+        {
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
+            utah
+        };
+        scene_instances.emplace_back(utah_instance);
+
+        // NOTE: for radiance cache testing only!!
+        // scene_instances.emplace_back(new MeshInstance
+        // {
+        //     glm::identity<glm::mat4>(),
+        //     Mesh
+        //     {
+        //         new Cuboid 
+        //         {
+        //             glm::vec3{ -20.f },
+        //             glm::vec3{ 40.f, 40.f, 40.f },
+        //             PBRMaterial
+        //             {
+        //                 .albedo = glm::vec3{ .9f, .0f, .0f },
+        //                 .emission = glm::vec3{ 0.f, 0.f, 0.f },
+        //                 .metallicity = 0.f,
+        //                 .refraction_index = 1.5f,
+        //                 .anisotropy = 0.f,
+        //                 .roughness = .5f,
+        //                 .transmission = .99f,
+        //             }
+        //         }
+        //     }
+        // });
 
     #endif
 
@@ -1190,11 +1233,13 @@ public:
         
         std::for_each(std::execution::par, index_buffer.begin(), index_buffer.end(), [&](int i)
         {
-            const auto x = xy_buffer[i].x;
-            const auto y = xy_buffer[i].y;
+            const auto& xy = xy_buffer[i];
+            const auto x = xy.x;
+            const auto y = xy.y;
 
-            const auto ndc_x = ndc_buffer[i].x;
-            const auto ndc_y = ndc_buffer[i].y;
+            const auto& ndc = ndc_buffer[i];
+            const auto ndc_x = ndc.x;
+            const auto ndc_y = ndc.y;
 
             // correct the ray coordinate space for accurate focus click distance
             const auto view_space_direction = uv_to_view_space(ndc_x, ndc_y);
@@ -1225,13 +1270,11 @@ public:
                     timestamp
                 };
 
-                const auto u_jittered = (x + glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.x;
-                const auto v_jittered = (y + glm::linearRand(0.f, 1.f)) * reciprocal_dimensions.y;
+                const auto jitter = glm::vec2{ glm::linearRand(0.f, 1.f), glm::linearRand(0.f, 1.f) };
+                const auto uv_jittered = (xy + jitter) * reciprocal_dimensions;
+                const auto ndc_jittered = 2.f * uv_jittered - 1.f;
 
-                const auto ndc_x_jittered = 2.f * u_jittered - 1.f;
-                const auto ndc_y_jittered = 2.f * v_jittered - 1.f;
-
-                const auto interpolated_view_space_direction = uv_to_view_space(ndc_x_jittered, ndc_y_jittered);
+                const auto interpolated_view_space_direction = uv_to_view_space(ndc_jittered.x, ndc_jittered.y);
                 const auto interpolated_world_space_direction_jittered = interpolated_inverse_view * interpolated_view_space_direction;
 
                 auto jittered_ray = Ray
@@ -1243,11 +1286,10 @@ public:
 
                 if (enable_dof)
                 {
-                    //const auto disk_sample = glm::diskRand(aperture_radius);
-                    const auto disk_sample = sample_polygon(Blades, Rotation) * aperture_radius;
+                    const auto aperture_sample = sample_polygon(Blades, Rotation) * aperture_radius;
 
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
-                    jittered_ray.origin += compute_right(then.yaw, then.pitch) * disk_sample.x + UP * disk_sample.y;
+                    jittered_ray.origin += compute_right(then.yaw, then.pitch) * aperture_sample.x + UP * aperture_sample.y;
                     // NOTE: rays do not arrive to the camera parallel to the sensor, so must compute the corresponding focal point in world space first                    
                     const auto focal_point = interpolated_ray.origin + interpolated_ray.direction * focal_distance;
                     jittered_ray.direction = glm::normalize(focal_point - jittered_ray.origin);
