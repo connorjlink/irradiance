@@ -550,34 +550,82 @@ namespace ir
             // light source (emissive white)
             new Quadrilateral
             {
-                glm::vec3{ .25f, -.99f, .5f },
-                glm::vec3{ -.25f, -.99f, .5f },
-                glm::vec3{ .25f, -.99f, -.5f },
+                glm::vec3{ .0f, -.99f, .5f },
+                glm::vec3{ -.5f, -.99f, .5f },
+                glm::vec3{ .0f, -.99f, -.5f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ 1.f, 1.f, 1.f },
-                    .emission = glm::vec3{ 1.f },
+                    .albedo = glm::vec3{ .9f, .9f, 1.f },
+                    .emission = glm::vec3{ .9f, .9f, 1.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
                 }
             },
 
-            // light source (emissive reddish)
+            // light source (emissive blue)
             new Quadrilateral
             {
-                glm::vec3{ .5f, -.95f, .25f },
-                glm::vec3{ .25f, -.95f, .25f },
-                glm::vec3{ .5f, -.95f, -.25f },
+                glm::vec3{ 1.f, -.99f, .5f },
+                glm::vec3{ .5f, -.99f, .5f },
+                glm::vec3{ 1.f, -.99f, -.5f },
                 PBRMaterial
                 {
-                    .albedo = glm::vec3{ 1.f, .6f, .0f },
-                    .emission = glm::vec3{ 1.f, .6f, .0f },
+                    .albedo = glm::vec3{ 1.f, .7f, .1f },
+                    .emission = glm::vec3{ 1.f, .7f, .1f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
                 }
             },
+
+            // // light source (emissive red)
+            // new Quadrilateral
+            // {
+            //     glm::vec3{ .0f, -.99f, .5f },
+            //     glm::vec3{ -.5f, -.99f, .5f },
+            //     glm::vec3{ .0f, -.99f, -.5f },
+            //     PBRMaterial
+            //     {
+            //         .albedo = glm::vec3{ 1.f, .1f, .1f },
+            //         .emission = glm::vec3{ 1.f, .1f, .1f },
+            //         .metallicity = 0.f,
+            //         .anisotropy = 0.f,
+            //         .roughness = .8f,
+            //     }
+            // },
+
+            // // light source (emissive green)
+            // new Quadrilateral
+            // {
+            //     glm::vec3{ .5f, -.99f, .5f },
+            //     glm::vec3{ .0f, -.99f, .5f },
+            //     glm::vec3{ .5f, -.99f, -.5f },
+            //     PBRMaterial
+            //     {
+            //         .albedo = glm::vec3{ .1f, 1.f, .1f },
+            //         .emission = glm::vec3{ .1f, 1.f, .1f },
+            //         .metallicity = 0.f,
+            //         .anisotropy = 0.f,
+            //         .roughness = .8f,
+            //     }
+            // },
+
+            // // light source (emissive blue)
+            // new Quadrilateral
+            // {
+            //     glm::vec3{ 1.f, -.99f, .5f },
+            //     glm::vec3{ .5f, -.99f, .5f },
+            //     glm::vec3{ 1.f, -.99f, -.5f },
+            //     PBRMaterial
+            //     {
+            //         .albedo = glm::vec3{ .1f, .1f, 1.f },
+            //         .emission = glm::vec3{ .1f, .1f, 1.f },
+            //         .metallicity = 0.f,
+            //         .anisotropy = 0.f,
+            //         .roughness = .8f,
+            //     }
+            // },
         };
 
         return new MeshInstance

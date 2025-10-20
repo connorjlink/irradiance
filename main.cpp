@@ -699,18 +699,7 @@ public:
                     if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
                         const auto geometry = (normal_cosine * light_cosine) / distance2;
-                        path += absorption * radiance * geometry / (weight * pdf);
-                    }
-                    else
-                    {
-                        if constexpr (ENABLE_SKYBOX)
-                        {
-                            const auto uv = compute_skybox_uv_coordinates(light_direction);
-                            const auto sample = skybox->Sample(uv.x, uv.y);
-                            const auto skybox_radiance = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
-                            const auto geometry = glm::clamp(glm::dot(normal, -reflection), 0.f, 1.f);
-                            path += absorption * skybox_radiance * geometry / weight;
-                        }
+                        path += absorption * radiance * geometry / pdf;
                     }
                 }
             }
