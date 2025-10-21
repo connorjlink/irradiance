@@ -148,6 +148,12 @@ namespace ir
     	bool success = (ec == std::errc() && ptr == end);
     	return { success, result };
     }
+
+    inline Real compute_srgb_luminance(const glm::vec3& color)
+    {
+        // sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
+        return .2126f * color.r + .7152f * color.g + .0722f * color.b;
+    }
 }
 
 #endif

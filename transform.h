@@ -141,15 +141,11 @@ namespace ir
         const auto index = static_cast<size_t>(std::floor(bucket * (data.size() - 1)));
 
         std::vector<glm::vec3> temporary = data;
-        #pragma message("TODO: create an independent srgb luminance function")
-        auto luminance = [](const glm::vec3& v)
-        {
-            return .2126f * v.r + .7152f * v.g + .0722f * v.b;
-        };
+
         std::nth_element(temporary.begin(), temporary.begin() + index, temporary.end(),
         [&](const glm::vec3& a, const glm::vec3& b) 
         {
-            return luminance(a) < luminance(b);
+            return compute_srgb_luminance(a) < compute_srgb_luminance(b);
         });
 
         return temporary[index];
@@ -609,8 +605,7 @@ namespace ir
             static ImageBuffer<Real> luminance(_width, _height);
             for (auto i = 0; i < _width * _height; i++)
             {
-                // sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
-                const auto Y = .2126f * image[i].r + .7152f * image[i].g + .0722f * image[i].b;
+                const auto Y = compute_srgb_luminance(image[i]);
                 luminance.data[i] = std::pow(Y, 3.f);
             }
 

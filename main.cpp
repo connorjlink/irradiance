@@ -178,34 +178,68 @@ public:
 
 private:
     Real maximum_laplacian = 0.f;
-    Real compute_image_laplacian(glm::vec3* image_buffer)
+    Real compute_image_laplacian(glm::vec3* image_buffer, Real* samples_buffer)
     {
-        auto laplacian = 0.f;
+        static constexpr auto kernel_x_offset = std::int32_t{ LAPLACIAN_KERNEL.size() / 2 };
+        static constexpr auto kernel_y_offset = std::int32_t{ LAPLACIAN_KERNEL[0].size() / 2 };
+        
+        static const auto number = ScreenWidth() * ScreenHeight();
+        static auto* buffer = new Real[number]{};
 
-        static constexpr auto kernel_x_offset = LAPLACIAN_KERNEL.size() / 2;
-        static constexpr auto kernel_y_offset = LAPLACIAN_KERNEL[0].size() / 2;
+        auto laplacian = 0.f;
 
         for (auto i = 0 + kernel_y_offset; i < ScreenHeight() - kernel_y_offset; i++)
         {
-            for (auto j = 0 + kernel_x_offset; j < ScreenWidth() - kernel_y_offset; j++)
+            for (auto j = 0 + kernel_x_offset; j < ScreenWidth() - kernel_x_offset; j++)
             {
-                auto accumulator = glm::vec3{ 0.f };
+                const auto pixel = i * ScreenWidth() + j;
 
-                for (auto ki = -kernel_y_offset; i <= kernel_y_offset; ki++)
+                auto accumulator = 0.f;
+
+                for (auto ki = -kernel_y_offset; ki <= kernel_y_offset; ki++)
                 {
-                    for (auto kj = -kernel_x_offset; j <= kernel_x_offset; kj++)
+                    for (auto kj = -kernel_x_offset; kj <= kernel_x_offset; kj++)
                     {
                         const auto kernel_value = LAPLACIAN_KERNEL[ki + kernel_y_offset][kj + kernel_x_offset];
-                        const auto pixel = image_buffer[(i + ki) * ScreenWidth() + (j + kj)];
-                        accumulator += pixel * kernel_value;
+                        
+                        const auto index = (i + ki) * ScreenWidth() + (j + kj);
+                        const auto luminance = compute_srgb_luminance(image_buffer[index] / samples_buffer[index]);
+                        
+                        const auto convolution = luminance * kernel_value;
+                        // sometimes the pixel data go bad, so this is an easy guard without affect results too badly
+                        if (std::isinf(convolution) || std::isnan(convolution))
+                        {
+                            const auto number_thus_far = pixel;
+                            const auto mean = laplacian / number_thus_far;
+                            accumulator += mean;
+                        }
+                        else
+                        {
+                            accumulator += convolution;
+                        }
                     }
                 }
-
-                laplacian += glm::length(accumulator);
+                
+                buffer[pixel] = accumulator;
+                laplacian += accumulator;
             }
         }
 
-        return laplacian;
+        const auto mean = laplacian / number;
+
+        auto sigma_approximation = 0.f;
+
+        for (auto i = 0; i < ScreenHeight(); i++)
+        {
+            for (auto j = 0; j < ScreenWidth(); j++)
+            {
+                const auto index = i * ScreenWidth() + j;
+                buffer[index] -= mean;
+                sigma_approximation += buffer[index] * buffer[index];
+            }
+        }
+
+        return glm::sqrt(sigma_approximation / (ScreenWidth() * ScreenHeight()));
     }
 
 private:
@@ -1066,7 +1100,7 @@ public:
             DrawStringPropDecal({ 5.f, 65.f }, std::format("Focal Length: {:.2f}mm ({:.0f}deg)", focal_length, fov_degrees), olc::YELLOW);
             DrawStringPropDecal({ 5.f, 75.f }, std::format("Aperture: f/{:.2f} (r={:.2f}mm)", fnumber, aperture_radius), olc::YELLOW);
 
-            const auto laplacian = compute_image_laplacian(frame_buffer);
+            const auto laplacian = compute_image_laplacian(frame_buffer, sample_counts.data());
             if (laplacian >= maximum_laplacian)
             {
                 maximum_laplacian = laplacian;
