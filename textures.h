@@ -18,6 +18,39 @@
 
 namespace ir
 {
+    template<std::size_t R>
+    class SquaresTexture : public olc::Sprite
+    {
+    public:
+        olc::Pixel Sample(float u, float v, const glm::vec3& pos) const override
+        {
+            const auto s = static_cast<int>(std::floor(pos.x * R));
+            const auto t = static_cast<int>(std::floor(pos.y * R));
+
+            if ((s + t) % 2 == 0)
+            {
+                return olc::Pixel(255, 255, 255, 255);
+            }
+            else
+            {
+                return olc::Pixel(0, 0, 0, 255);
+            }
+        }
+    };
+
+    template<std::size_t R>
+    class UVWTexture : public olc::Sprite
+    {
+    public:
+        olc::Pixel Sample(float u, float v, const glm::vec3& pos) const override
+        {
+            const auto r = static_cast<uint8_t>(pos.x / R * 255.f);
+            const auto g = static_cast<uint8_t>(pos.y / R * 255.f);
+            const auto b = static_cast<uint8_t>(pos.z / R * 255.f);
+            return olc::Pixel(r, g, b, 255);
+        }
+    };
+
     template<std::size_t N, std::size_t M = 3>
         requires (std::popcount(N) == 1) // N must be a power of 2
     class PerlinNoise : public olc::Sprite
@@ -25,7 +58,6 @@ namespace ir
     private:
         static constexpr std::size_t INTERPOLATION_DELTA = 2;
         using PerlinInterpolationArray = std::array<std::array<std::array<glm::vec3, INTERPOLATION_DELTA>, INTERPOLATION_DELTA>, INTERPOLATION_DELTA>;
-        using TrilinearInterpolationArray = std::array<std::array<std::array<Real, INTERPOLATION_DELTA>, INTERPOLATION_DELTA>, INTERPOLATION_DELTA>;
 
     private:
         std::array<glm::vec<M, int>, N> permutation;
@@ -100,30 +132,6 @@ namespace ir
             return sum;
         }
 
-        // NOTE: old method, causes some clearly visible square artifacts
-        Real trilerp(TrilinearInterpolationArray& sample, Real u, Real v, Real w) const
-        {
-            auto sum = 0.f;
-
-            for (auto x = 0; x < INTERPOLATION_DELTA; x++)
-            {
-                for (int y = 0; y < INTERPOLATION_DELTA; y++)
-                {
-                    for (int z = 0; z < INTERPOLATION_DELTA; z++)
-                    {
-                        // Full attribution to Peter Shirley for trilinear interpolation formula!
-                        // https://raytracing.github.io/books/RayTracingTheNextWeek.html#perlinnoise/smoothingouttheresult
-                        sum += sample[x][y][z] *
-                            (x * u + (1.f - x) * (1.f - u)) *
-                            (y * v + (1.f - y) * (1.f - v)) * 
-                            (z * w + (1.f - z) * (1.f - w)); 
-                    }
-                }
-            }
-
-            return sum;
-        }
-
     public:
         Real noise(const glm::vec<M, Real>& point) const
         {
@@ -181,6 +189,8 @@ namespace ir
     inline std::unique_ptr<olc::Sprite> wood;
     inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin_low;
     inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin_high;
+    inline std::unique_ptr<SquaresTexture<1uz>> squares;
+    inline std::unique_ptr<UVWTexture<1uz>> uwv;
 
     inline void initialize_textures()
     {
@@ -193,6 +203,8 @@ namespace ir
         wood = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129731.jpg");
         perlin_low = std::make_unique<PerlinNoise<256uz, 3uz>>(1.f, 10.f);
         perlin_high = std::make_unique<PerlinNoise<256uz, 3uz>>(10.f);
+        squares = std::make_unique<SquaresTexture<1uz>>();
+        uwv =  std::make_unique<UVWTexture<1uz>>();
     }
 }
 

@@ -72,8 +72,6 @@ namespace ir
         glm::vec2 uv;
     };
 
-    // (c) Connor J. Link. Attribution from personal work outside of ISU.
-    // Utility function that does not meaningfully affect project.
     inline std::vector<std::string> split(std::string text, const std::string& delimiter)
 	{
 		return text
@@ -134,8 +132,6 @@ namespace ir
         auto end() { return data.end(); }
     };
 
-    // (c) Connor J. Link. Attribution from personal work outside of ISU.
-    // Utility function that does not meaningfully affect project functionality.
     template<typename T>
     struct ParseResult
     {

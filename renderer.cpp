@@ -901,8 +901,6 @@ namespace ir
         }(std::make_index_sequence<sizeof...(Ts)>{});
     }
 
-    // (c) Connor J. Link. Partial attribution (meaningful modifications performed herein) from personal work outside of ISU.
-    // Utility function that does not meaningfully affect project functionality.
     Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material)
     {
         Mesh objects{};

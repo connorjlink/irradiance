@@ -248,8 +248,8 @@ namespace ir
             },
             new Sphere
             {
-                glm::vec3{ 40.f, -4.f, 0.f },
-                .25f,
+                glm::vec3{ 40.f, -4.f, 10.f },
+                1.25f,
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .56f, .518f, .835f },
@@ -371,7 +371,7 @@ namespace ir
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
-                    .roughness = 1.f,
+                    .roughness = .4f,
                 }
             },
             new Triangle
@@ -547,7 +547,7 @@ namespace ir
                 }
             },
 
-            // light source (emissive white)
+            // light source
             new Quadrilateral
             {
                 glm::vec3{ .0f, -.99f, .5f },
@@ -556,14 +556,14 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .9f, .9f, 1.f },
-                    .emission = glm::vec3{ 6.9f, 6.9f, 10.f },
+                    .emission = glm::vec3{ 100.9f, 100.9f, 90.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
                 }
             },
 
-            // light source (emissive blue)
+            // light source
             new Quadrilateral
             {
                 glm::vec3{ 1.f, -.99f, .5f },
@@ -572,7 +572,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, .7f, .1f },
-                    .emission = glm::vec3{ 20.f, 4.7f, 5.f },
+                    .emission = glm::vec3{ 50.f, 40.7f, 50.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,

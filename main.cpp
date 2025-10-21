@@ -58,6 +58,13 @@ static constexpr Real CLEAN_EXPIRY = 1.f;
 
 static constexpr int FRAME_HISTORY = 1;
 
+static constexpr std::array<std::array<Real, 3>, 3> LAPLACIAN_KERNEL
+{
+    std::array<Real, 3>{ 0.f,  1.f, 0.f },
+    std::array<Real, 3>{ 1.f, -4.f, 1.f },
+    std::array<Real, 3>{ 0.f,  1.f, 0.f },
+};
+
 #if !defined(CORNELL) && !defined(CORNELL2)
     static constexpr bool ENABLE_SKYBOX = true;
 #else
@@ -170,10 +177,41 @@ public:
     std::deque<ShutterSample> shutter_history;
 
 private:
+    Real maximum_laplacian = 0.f;
+    Real compute_image_laplacian(glm::vec3* image_buffer)
+    {
+        auto laplacian = 0.f;
+
+        static constexpr auto kernel_x_offset = LAPLACIAN_KERNEL.size() / 2;
+        static constexpr auto kernel_y_offset = LAPLACIAN_KERNEL[0].size() / 2;
+
+        for (auto i = 0 + kernel_y_offset; i < ScreenHeight() - kernel_y_offset; i++)
+        {
+            for (auto j = 0 + kernel_x_offset; j < ScreenWidth() - kernel_y_offset; j++)
+            {
+                auto accumulator = glm::vec3{ 0.f };
+
+                for (auto ki = -kernel_y_offset; i <= kernel_y_offset; ki++)
+                {
+                    for (auto kj = -kernel_x_offset; j <= kernel_x_offset; kj++)
+                    {
+                        const auto kernel_value = LAPLACIAN_KERNEL[ki + kernel_y_offset][kj + kernel_x_offset];
+                        const auto pixel = image_buffer[(i + ki) * ScreenWidth() + (j + kj)];
+                        accumulator += pixel * kernel_value;
+                    }
+                }
+
+                laplacian += glm::length(accumulator);
+            }
+        }
+
+        return laplacian;
+    }
+
+private:
     glm::vec2 sample_polygon(std::uint32_t blades, Real rotation)
     {
-        // back solving the following equation:
-        // (c) Connor J. Link https://www.desmos.com/calculator/kigtnvrkcm
+        // back solving the following equation: https://www.desmos.com/calculator/kigtnvrkcm
         // credit to Dr. Barker for a helpful derivation https://www.youtube.com/watch?v=AoOv6bWg9lk
 
         // choose a random triangle sector
@@ -316,18 +354,18 @@ public:
             {
                 const auto index = x + y * ScreenWidth();
 
-                const auto original = frame_buffer[x + y * ScreenWidth()] / sample_counts[index];
+                #warning TODO: WHY DOES ADDING GAMMA MAKE IT LOOK WORSE?
+                auto color = frame_buffer[x + y * ScreenWidth()] / sample_counts[index];
+                color = gamma_correct(color);
 
-                const auto gamma_corrected = gamma_correct(original);
-
-                const auto color = RGB
+                const auto result = RGB
                 { 
-                    static_cast<std::uint8_t>(255.f * gamma_corrected.r), 
-                    static_cast<std::uint8_t>(255.f * gamma_corrected.g), 
-                    static_cast<std::uint8_t>(255.f * gamma_corrected.b)
+                    static_cast<std::uint8_t>(255.f * color.r), 
+                    static_cast<std::uint8_t>(255.f * color.g), 
+                    static_cast<std::uint8_t>(255.f * color.b)
                 };
 
-                rgb[index] = color;
+                rgb[index] = result;
             }
         }
         
@@ -906,9 +944,9 @@ public:
         {
             .albedo = glm::vec3{ 1.f, 1.f, 1.f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = 0.f,
+            .metallicity = 1.f,
             .anisotropy = 0.f,
-            .roughness = .1f,
+            .roughness = 0.f,
         };
 
         const auto cuboid = cube(material);
@@ -1027,6 +1065,13 @@ public:
             const auto fnumber = compute_fnumber(focal_length, aperture_radius);
             DrawStringPropDecal({ 5.f, 65.f }, std::format("Focal Length: {:.2f}mm ({:.0f}deg)", focal_length, fov_degrees), olc::YELLOW);
             DrawStringPropDecal({ 5.f, 75.f }, std::format("Aperture: f/{:.2f} (r={:.2f}mm)", fnumber, aperture_radius), olc::YELLOW);
+
+            const auto laplacian = compute_image_laplacian(frame_buffer);
+            if (laplacian >= maximum_laplacian)
+            {
+                maximum_laplacian = laplacian;
+            }
+            DrawStringPropDecal({ 5.f, 85.f }, std::format("Image Laplacian: Current {:.6f}, Max {:.6f}", laplacian, maximum_laplacian), olc::YELLOW);
         }
 
         if (GetKey(olc::Key::P).bPressed)
@@ -1465,8 +1510,8 @@ public:
                 #endif
 
                 // no gamma for drawing looks more pleasing due to MacOS and OLCPGE color handling. The drawing commands already run non-linear on a default-sRGB space.
-                // TODO: still need to apply it only for image exports
-                //const auto gamma_corrected = gamma_correct(color);
+                color = glm::clamp(color, glm::vec3{ 0.f }, glm::vec3{ 1.f });
+
                 Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
             }
         }
@@ -1485,6 +1530,7 @@ public:
             std::fill(frame_buffer, frame_buffer + number, glm::vec3{ 0.f });
             std::fill(sample_counts.begin(), sample_counts.end(), 0.f);
             accumulated_frames = 1;
+            maximum_laplacian = 0.f;
         }
         // TODO: necessary if view decay not used
         // if (!dirty && last_dirty)
