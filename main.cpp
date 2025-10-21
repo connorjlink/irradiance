@@ -58,12 +58,13 @@ static constexpr Real CLEAN_EXPIRY = 1.f;
 
 static constexpr int FRAME_HISTORY = 1;
 
-#ifndef CORNELL
+#if !defined(CORNELL) && !defined(CORNELL2)
     static constexpr bool ENABLE_SKYBOX = true;
 #else
     static constexpr bool ENABLE_SKYBOX = false;
 #endif
 
+//#define ENABLE_PRESENTATION_TONEMAPPING
 
 int _bounces = 2;
 int _samples = 5;
@@ -291,10 +292,9 @@ public:
 
     glm::vec3 gamma_correct(const glm::vec3& color)
     {
-        // Gamma correction, 2.2 common for sRGB, but lower looks more pleasing due to MacOS and OLCPGE color handling https://en.wikipedia.org/wiki/Gamma_correction
+        // Gamma correction, 2.2 common for sRGB https://en.wikipedia.org/wiki/Gamma_correction
 
-        //const auto corrected = glm::pow(color, glm::vec3{ 1 / 1.5f });
-        const auto corrected = color;
+        const auto corrected = glm::pow(color, glm::vec3{ 1 / 2.2f });
         return glm::clamp(corrected, 0.f, 1.f);
     }
 
@@ -547,7 +547,7 @@ public:
 
                 #endif
                 
-                ray.origin = nearest_intersection.position + normal * .001f;
+                ray.origin = nearest_intersection.position + normal * EPSILON_F;
                 // FUTURE: sample according to roughness and anisotropy (need surface anisotropy tangent basis, e.g., metal grain)
                 ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
                 
@@ -678,9 +678,13 @@ public:
                     auto distance2 = glm::length2(light_direction);
                     light_direction = glm::normalize(light_direction);
 
-                    const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-
+                    const auto NdotL = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
+                    const auto LnDotL = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
+                    
                     const auto light_area = sampled_emitter.object->area;
+
+                    #warning FOR INACCURATE MODEL ONLY--BIASES TOWARD DIRECT SAMPLES
+                    const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
                     const auto light_cosine = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
 
                     // next-event estimation direct light sampling per bounce
@@ -698,8 +702,21 @@ public:
                     const auto occlusion = compute_nearest_intersection(light_ray);
                     if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
+                        //#define INACCURATE_COMPOSITING
+                        #ifdef INACCURATE_COMPOSITING
+
                         const auto geometry = (normal_cosine * light_cosine) / distance2;
                         path += absorption * radiance * geometry / pdf;
+
+                        #else
+
+                        const auto light_probability = sampled_emitter.probability * (distance2 / (LnDotL * light_area + EPSILON_F));
+
+                        static constexpr auto EPSILON_L = 1e-12f;
+                        const auto probability = (light_probability * light_probability) / glm::max(light_probability * light_probability + pdf * pdf, EPSILON_L);
+                        path += absorption * radiance * (NdotL / (light_probability + EPSILON_F)) * probability;
+
+                        #endif
                     }
                 }
             }
@@ -891,7 +908,7 @@ public:
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
             .metallicity = 0.f,
             .anisotropy = 0.f,
-            .roughness = .6f,
+            .roughness = .1f,
         };
 
         const auto cuboid = cube(material);
@@ -1331,8 +1348,18 @@ public:
             total_color /= static_cast<Real>(_samples);
             // IMPORTANT: MUST APPLY ISO EXPOSURE CORRECTION BEFORE AVERAGING!!!!! OTHERWISE IT'S ALMOST GRAY
             const auto iso_corrected = total_color * (ISO / REFERENCE_ISO);
+
+            #ifndef ENABLE_PRESENTATION_TONEMAPPING
+
             const auto tone_mapped = tonemap(iso_corrected);
             
+            #else
+
+            const auto tone_mapped = iso_corrected;
+
+            #endif
+
+
             const auto half_life = dirty ? HISTORY_HALF_LIFE_DIRTY : HISTORY_HALF_LIFE_STABLE;
             const auto decay = glm::pow(.5f, fElapsedTime / glm::max(half_life, HISTORY_EPSILON));
 
@@ -1429,9 +1456,18 @@ public:
             for (auto y = 0; y < ScreenHeight(); y++)
             {
                 const auto index = x + y * ScreenWidth();
-                const auto color = frame_buffer[index] / sample_counts[index];
-                const auto gamma_corrected = gamma_correct(color);
-                Draw(x, y, olc::Pixel(gamma_corrected.r * 255.f, gamma_corrected.g * 255.f, gamma_corrected.b * 255.f));
+                auto color = frame_buffer[index] / sample_counts[index];
+                
+                #ifdef ENABLE_PRESENTATION_TONEMAPPING
+
+                color = tonemap(color);
+
+                #endif
+
+                // no gamma for drawing looks more pleasing due to MacOS and OLCPGE color handling. The drawing commands already run non-linear on a default-sRGB space.
+                // TODO: still need to apply it only for image exports
+                //const auto gamma_corrected = gamma_correct(color);
+                Draw(x, y, olc::Pixel(color.r * 255.f, color.g * 255.f, color.b * 255.f));
             }
         }
 

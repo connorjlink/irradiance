@@ -556,7 +556,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .9f, .9f, 1.f },
-                    .emission = glm::vec3{ .9f, .9f, 1.f },
+                    .emission = glm::vec3{ 6.9f, 6.9f, 10.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
@@ -572,7 +572,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, .7f, .1f },
-                    .emission = glm::vec3{ 1.f, .7f, .1f },
+                    .emission = glm::vec3{ 20.f, 4.7f, 5.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
