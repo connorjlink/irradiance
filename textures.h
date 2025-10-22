@@ -194,9 +194,9 @@ namespace ir
 
     inline void initialize_textures()
     {
-        //skybox = std::make_unique<olc::Sprite>("golden_gate_hills_4k.hdr");
+        skybox = std::make_unique<olc::Sprite>("golden_gate_hills_4k.hdr");
         //skybox = std::make_unique<olc::Sprite>("citrus_orchard_puresky_4k.hdr");
-        skybox = std::make_unique<olc::Sprite>("docklands_01_4k.hdr");
+        //skybox = std::make_unique<olc::Sprite>("docklands_01_4k.hdr");
         water = std::make_unique<olc::Sprite>("pexels-enginakyurt-1435752.jpg");
         rock = std::make_unique<olc::Sprite>("pexels-life-of-pix-8892.jpg");
         gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");

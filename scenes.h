@@ -37,7 +37,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .1f, .1f, .8f },
-                    .emission = glm::vec3{ 1.f },
+                    //.emission = glm::vec3{ .9f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = 0.1f,
@@ -128,7 +128,7 @@ namespace ir
             },
             new Sphere
             {
-                glm::vec3{ -8.f, -1.f, 4.f },
+                glm::vec3{ -8.f, -8.f, 4.f },
                 1.f,
                 PBRMaterial
                 {
@@ -143,7 +143,7 @@ namespace ir
             },
             new Sphere
             {
-                glm::vec3{ -8.f, -1.f, 2.f },
+                glm::vec3{ -8.f, -8.f, 2.f },
                 1.f,
                 PBRMaterial
                 {
@@ -158,7 +158,7 @@ namespace ir
             },
             new Sphere
             {
-                glm::vec3{ -8.f, -1.f, 6.f },
+                glm::vec3{ -8.f, -8.f, 6.f },
                 1.f,
                 PBRMaterial
                 {
@@ -253,7 +253,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .56f, .518f, .835f },
-                    .emission = glm::vec3{ 1.e1f, .9e1f, .8e1f },
+                    .emission = glm::vec3{ 10.f, 9.9f, 9.8f },
                     .metallicity = .9f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
@@ -269,11 +269,9 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .25f, .75, .4f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = .5f,
-                    .refraction_index = 1.67f,
+                    .metallicity = .8f,
                     .anisotropy = 0.f,
                     .roughness = .1f,
-                    .transmission = .1f,
                     .texture = perlin_low.get(),
                 }
             },
@@ -369,7 +367,7 @@ namespace ir
                 {
                     .albedo = glm::vec3{ .25f, .5f, .75f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = 0.f,
+                    .metallicity = .1f,
                     .anisotropy = 0.f,
                     .roughness = .4f,
                 }
@@ -556,7 +554,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ .9f, .9f, 1.f },
-                    .emission = glm::vec3{ 100.9f, 100.9f, 90.f },
+                    .emission = glm::vec3{ .9f, .9f, 1.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,
@@ -572,7 +570,7 @@ namespace ir
                 PBRMaterial
                 {
                     .albedo = glm::vec3{ 1.f, .7f, .1f },
-                    .emission = glm::vec3{ 50.f, 40.7f, 50.f },
+                    .emission = glm::vec3{ 1.f, .7f, 1.f },
                     .metallicity = 0.f,
                     .anisotropy = 0.f,
                     .roughness = .8f,

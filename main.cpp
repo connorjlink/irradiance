@@ -66,12 +66,12 @@ static constexpr std::array<std::array<Real, 3>, 3> LAPLACIAN_KERNEL
 };
 
 #if !defined(CORNELL) && !defined(CORNELL2)
-    static constexpr bool ENABLE_SKYBOX = true;
+    static constexpr bool ENABLE_SKYBOX = false;
 #else
     static constexpr bool ENABLE_SKYBOX = false;
 #endif
 
-//#define ENABLE_PRESENTATION_TONEMAPPING
+#define ENABLE_PRESENTATION_TONEMAPPING
 
 int _bounces = 2;
 int _samples = 5;
@@ -563,7 +563,7 @@ public:
             auto dielectric_reflectance = (1.f - material.refraction_index) / (1.f + material.refraction_index);
             dielectric_reflectance *= dielectric_reflectance;
             // using an arbitrary base reflectance of 4% for non-metals, reasonable according to https://docs.omniverse.nvidia.com/materials-and-rendering/latest/templates/parameters/OmniPBR_Reflectivity.html
-            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, dielectric_reflectance);
+            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, material.metallicity);
             const auto F = compute_fresnel_F(F0, 1.f - normal_angle);
 
             const auto metal_probability = material.metallicity;
@@ -603,7 +603,7 @@ public:
                 return ggx;
             };
 
-            #define ENABLE_GGX_SPECULAR
+            //#define ENABLE_GGX_SPECULAR
 
             if (random < metal_weight)
             {
@@ -750,14 +750,11 @@ public:
                     auto distance2 = glm::length2(light_direction);
                     light_direction = glm::normalize(light_direction);
 
-                    const auto NdotL = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-                    const auto LnDotL = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
-                    
                     const auto light_area = sampled_emitter.object->area;
 
-                    #warning FOR INACCURATE MODEL ONLY--BIASES TOWARD DIRECT SAMPLES
                     const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
                     const auto light_cosine = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
+                    const auto inverse_light_cosine = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
 
                     // next-event estimation direct light sampling per bounce
                     // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
@@ -768,27 +765,13 @@ public:
                     };
 
                     const auto radiance = sampled_emitter.object->material.emission;
-
                     const auto pdf = distance2 / (light_cosine * light_area);
 
                     const auto occlusion = compute_nearest_intersection(light_ray);
                     if (occlusion.hit && occlusion.object == sampled_emitter.object)
                     {
-                        //#define INACCURATE_COMPOSITING
-                        #ifdef INACCURATE_COMPOSITING
-
-                        const auto geometry = (normal_cosine * light_cosine) / distance2;
-                        path += absorption * radiance * geometry / pdf;
-
-                        #else
-
-                        const auto light_probability = sampled_emitter.probability * (distance2 / (LnDotL * light_area + EPSILON_F));
-
-                        static constexpr auto EPSILON_L = 1e-12f;
-                        const auto probability = (light_probability * light_probability) / glm::max(light_probability * light_probability + pdf * pdf, EPSILON_L);
-                        path += absorption * radiance * (NdotL / (light_probability + EPSILON_F)) * probability;
-
-                        #endif
+                        const auto geometry = (normal_cosine * inverse_light_cosine) / distance2;
+                        path += absorption * radiance * geometry * pdf;
                     }
                 }
             }
@@ -875,7 +858,6 @@ public:
         initialize_textures();
 
     #ifdef CORNELL
-
 
         scene_instances.emplace_back(cornell_box());
 
@@ -1100,8 +1082,8 @@ public:
             DrawStringPropDecal({ 5.f, 65.f }, std::format("Focal Length: {:.2f}mm ({:.0f}deg)", focal_length, fov_degrees), olc::YELLOW);
             DrawStringPropDecal({ 5.f, 75.f }, std::format("Aperture: f/{:.2f} (r={:.2f}mm)", fnumber, aperture_radius), olc::YELLOW);
 
-            const auto laplacian = compute_image_laplacian(frame_buffer, sample_counts.data());
-            if (laplacian >= maximum_laplacian)
+            auto laplacian = compute_image_laplacian(frame_buffer, sample_counts.data());
+            if (!std::isinf(laplacian) && !std::isnan(laplacian) && laplacian >= maximum_laplacian)
             {
                 maximum_laplacian = laplacian;
             }
