@@ -18,19 +18,6 @@
 // renderer.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
 
-namespace 
-{
-    static constexpr ir::RayIntersection MISS = 
-    {
-        .position = glm::vec3{},
-        .normal = glm::vec3{},
-        .material = ir::PBRMaterial{},
-        .depth = std::numeric_limits<ir::Real>::infinity(),
-        .exit = std::numeric_limits<ir::Real>::infinity(),
-        .hit = false,
-    };
-}
-
 namespace ir
 {
     bool BoundingVolume::contains(const glm::vec3& point) const

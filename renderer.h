@@ -358,6 +358,16 @@ namespace ir
     };
 
     Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material);
+
+    inline static constexpr ir::RayIntersection MISS = 
+    {
+        .position = glm::vec3{},
+        .normal = glm::vec3{},
+        .material = ir::PBRMaterial{},
+        .depth = std::numeric_limits<ir::Real>::infinity(),
+        .exit = std::numeric_limits<ir::Real>::infinity(),
+        .hit = false,
+    };
 }
 
 #endif

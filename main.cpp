@@ -31,6 +31,7 @@
 #include "cache.h"
 #include "meshes.h"
 #include "transform.h"
+#include "shader.h"
 
 // main.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
@@ -41,8 +42,6 @@ static constexpr Real MOUSE_SENSITIVITY = 20.f;
 static constexpr Real MOVEMENT_SPEED = 5.f;
 static const glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
 static constexpr Real SAMPLE_JITTER = .001f;
-
-static constexpr Real NONMETAL_REFLECTANCE = .04f;
 
 static constexpr Real BASE_ISO = 25.f;
 static constexpr Real REFERENCE_ISO = 4.f * 4.f * BASE_ISO; // ISO400
@@ -65,16 +64,14 @@ static constexpr std::array<std::array<Real, 3>, 3> LAPLACIAN_KERNEL
     std::array<Real, 3>{ 0.f,  1.f, 0.f },
 };
 
-#if !defined(CORNELL) && !defined(CORNELL2)
-    static constexpr bool ENABLE_SKYBOX = false;
-#else
-    static constexpr bool ENABLE_SKYBOX = false;
-#endif
-
 #define ENABLE_PRESENTATION_TONEMAPPING
 
-int _bounces = 2;
-int _samples = 5;
+TLAS* _tlas = nullptr;
+
+std::int32_t _bounces = 2;
+std::int32_t _samples = 5;
+
+std::vector<MeshInstance*> _scene_instances;
 
 class Irradiance : public olc::PixelGameEngine
 {
@@ -152,18 +149,6 @@ private:
     Diffractor diffractor{};
 
 public:
-    struct Emitter
-    {
-        Object* object = nullptr;
-        Real power = 0.f;
-        Real probability = 0.f;
-    };
-
-    std::vector<MeshInstance*> scene_instances;
-    TLAS* tlas = nullptr;
-    std::vector<Emitter> emissive_objects;
-
-public:
     struct ShutterSample
     {
         // camera orientation
@@ -209,8 +194,7 @@ private:
                         // sometimes the pixel data go bad, so this is an easy guard without affect results too badly
                         if (std::isinf(convolution) || std::isnan(convolution))
                         {
-                            const auto number_thus_far = pixel;
-                            const auto mean = laplacian / number_thus_far;
+                            const auto mean = laplacian / pixel;
                             accumulator += mean;
                         }
                         else
@@ -388,7 +372,6 @@ public:
             {
                 const auto index = x + y * ScreenWidth();
 
-                #warning TODO: WHY DOES ADDING GAMMA MAKE IT LOOK WORSE?
                 auto color = frame_buffer[x + y * ScreenWidth()] / sample_counts[index];
                 color = gamma_correct(color);
 
@@ -410,30 +393,6 @@ public:
         return filepath;
     }
 
-    RayIntersection compute_nearest_intersection(const Ray& ray)
-    {
-        if (tlas)
-        {
-            return tlas->intersect(ray);
-        }
-        else
-        {
-            auto nearest_intersection = RayIntersection{};
-
-            for (const auto& instance : scene_instances)
-            {
-                const auto intersection = instance->intersect(ray);
-
-                if (intersection.hit && intersection.depth < nearest_intersection.depth)
-                {
-                    nearest_intersection = intersection;
-                }
-            }
-
-            return nearest_intersection;
-        }
-    }
-
     glm::vec3 compute_direction(Real yaw, Real pitch) const
     {
         const auto yaw_radians = glm::radians(yaw);
@@ -451,352 +410,6 @@ public:
         const auto direction = compute_direction(yaw, pitch);
         return glm::normalize(glm::cross(direction, UP));
     }
-
-    glm::vec2   compute_skybox_uv_coordinates(const glm::vec3& direction) const
-    {
-        const auto theta = glm::atan(direction.z, direction.x);
-        const auto phi = glm::acos(-direction.y); 
-
-        auto u = (theta + glm::pi<Real>()) / (2.f * glm::pi<Real>());
-        auto v = phi / glm::pi<Real>();
-
-        u = 1.f - u;
-
-        return { u, v };
-    }
-
-    Real compute_emissivity(const Emitter& emitter)
-    {
-        return emitter.object->area * glm::length(emitter.object->material.emission);
-    };
-
-    #define INTERNAL_REVALIDATE(x, y) do { if (glm::isinf(x) || glm::isnan(x)) { x = y; } } while (0)
-    #define REVALIDATE(x) INTERNAL_REVALIDATE(x, 0.f)
-
-    Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
-    {
-        const auto roughness4 = roughness * roughness * roughness * roughness + .01f;
-
-        const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
-        const auto angle2 = angle * angle;
-
-        const auto scalar = (angle2 * (roughness4 - 1.f) + 1.f);
-        const auto denominator = glm::pi<Real>() * scalar * scalar;
-
-        return roughness4 / denominator;
-    }
-
-    glm::vec3 compute_fresnel_F(const glm::vec3& F0, Real cosine)
-    {
-        // Schlick approximation
-        return F0 + (1.f - F0) * glm::pow(1.f - cosine, 5.f);
-    }
-
-    Real compute_smith_G(const glm::vec3& light, const glm::vec3& view, const glm::vec3& normal, Real roughness)
-    {
-        //  https://schuttejoe.github.io/post/ggximportancesamplingpart2/
-
-        const auto light_angle = glm::max(glm::dot(normal, light), 0.f);
-        const auto view_angle = glm::max(glm::dot(normal, view), 0.f);
-
-        const auto k = (roughness + 1.f) * (roughness + 1.f) / 8.f;
-
-        const auto G1_light = light_angle / (light_angle * (1.f - k) + k);
-        const auto G1_view = view_angle / (view_angle * (1.f - k) + k);
-
-        return G1_light * G1_view;
-    }
-
-    glm::vec3 trace(Ray& ray, int bounces, RayIntersection& output_intersection)
-    {
-        if (bounces <= 0)
-        {
-            return glm::vec3{ 0.f };
-        }
-
-        const auto nearest_intersection = compute_nearest_intersection(ray);
-        if (bounces == _bounces && nearest_intersection.hit)
-        {
-            output_intersection = nearest_intersection;
-        }
-
-        if (nearest_intersection.hit)
-        {
-            // NOTE: evidently cannot draw from the parallelized loop: gets malloc_break seg-faults
-            //DrawRectDecal({ 1.f, 4.f }, { 2.f, 2.f }, olc::BLUE);
-
-            // for testing only
-            //std::cout << "Hit at depth: " << intersection.depth << "\n";
-
-            if (nearest_intersection.material.emission != glm::vec3{ 0.f })
-            {
-                // emissive surfaces terminate bouncing
-                return nearest_intersection.material.emission;
-            }
-
-            auto albedo = nearest_intersection.material.albedo;
-
-            if (nearest_intersection.material.texture)
-            {
-                const auto& uv = nearest_intersection.uv;
-                const auto sample = nearest_intersection.material.texture->Sample(uv.x, uv.y, nearest_intersection.position);
-                albedo = glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
-            }
-                
-            // ensure normal is relative to the front face
-            auto normal = nearest_intersection.normal;
-            const bool is_front_face = glm::dot(normal, ray.direction) < 0.f;
-            normal = is_front_face ? normal : -normal;
-
-            // ensure random sample hits hemisphere above the front face surface normal
-            auto random_in_unit_sphere = glm::sphericalRand(1.f);
-            if (glm::dot(random_in_unit_sphere, normal) < 0.f)
-            {
-                random_in_unit_sphere = -random_in_unit_sphere;
-            }
-
-            const auto& material = nearest_intersection.material;
-
-            const auto normal_angle = glm::clamp(glm::dot(normal, ray.direction), 0.f, 1.f);
-            
-            // Fresnel term with Schlick's approximation
-            auto dielectric_reflectance = (1.f - material.refraction_index) / (1.f + material.refraction_index);
-            dielectric_reflectance *= dielectric_reflectance;
-            // using an arbitrary base reflectance of 4% for non-metals, reasonable according to https://docs.omniverse.nvidia.com/materials-and-rendering/latest/templates/parameters/OmniPBR_Reflectivity.html
-            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, material.metallicity);
-            const auto F = compute_fresnel_F(F0, 1.f - normal_angle);
-
-            const auto metal_probability = material.metallicity;
-            const auto reflection_probability = (1.f - material.metallicity) * glm::compMax(F) + material.metallicity;
-            const auto refraction_probability = (1.f - material.metallicity) * (1.f - glm::compMax(F)) * material.transmission;
-            const auto diffuse_probability = (1.f - material.metallicity) * (1.f - glm::compMax(F)) * (1.f - material.transmission);
-
-            const auto total = metal_probability + reflection_probability + refraction_probability + diffuse_probability;
-
-            const auto metal_weight = metal_probability / total;
-            const auto reflection_weight = reflection_probability / total;
-            const auto refraction_weight = refraction_probability / total;
-            const auto diffuse_weight = diffuse_probability / total;
-
-            const auto random = glm::linearRand(0.f, 1.f);
-
-            auto absorption = glm::vec3{ 1.f };
-            auto weight = 1.f;
-
-            const auto reflection = glm::reflect(ray.direction, normal);
-
-            auto shade_ggx = [&]()
-            {
-                const auto V = -ray.direction;
-                const auto R = reflection; 
-                const auto H = glm::normalize(R + V);
-
-                const auto D = compute_GGX_D(H, normal, material.roughness);
-                const auto F = compute_fresnel_F(F0, glm::max(0.f, glm::dot(H, V)));
-                const auto G = compute_smith_G(R, V, normal, material.roughness);
-
-                const auto reflection_angle = glm::max(0.f, glm::dot(normal, R));
-                const auto view_angle = glm::max(0.f, glm::dot(normal, V));
-
-                const auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
-
-                return ggx;
-            };
-
-            //#define ENABLE_GGX_SPECULAR
-
-            if (random < metal_weight)
-            {
-                // metallic reflection
-
-                #ifdef ENABLE_GGX_SPECULAR
-
-                const auto specular = shade_ggx();
-
-                #else
-
-                const auto specular = F;
-
-                #endif
-                
-                ray.origin = nearest_intersection.position + normal * EPSILON_F;
-                // FUTURE: sample according to roughness and anisotropy (need surface anisotropy tangent basis, e.g., metal grain)
-                ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
-                
-                absorption = specular * albedo;
-                weight = metal_weight;
-            }
-            else if (random < metal_weight + reflection_weight)
-            {
-                // dielectric reflection
-
-                #ifdef ENABLE_GGX_SPECULAR
-
-                const auto specular = shade_ggx();
-                
-                #else
-
-                const auto specular = F;
-
-                #endif
-
-                ray.origin = nearest_intersection.position + normal * .001f;
-                // FUTURE: sample according to roughness and anisotropy (need surface anisotropy tangent basis, e.g., metal grain)
-                ray.direction = glm::normalize(reflection + random_in_unit_sphere * nearest_intersection.material.roughness);
-
-                absorption = specular * glm::vec3{ material.transmission };
-                weight = reflection_weight;
-            }
-            else if (random < metal_weight + reflection_weight + refraction_weight)
-            {
-                // dielectric refraction
-                const auto eta = glm::dot(normal, -ray.direction) > 0.f 
-                    ? (1.f / nearest_intersection.material.refraction_index) 
-                    : nearest_intersection.material.refraction_index;
-
-                auto refraction = glm::refract(ray.direction, normal, eta);
-
-                if (glm::length2(refraction) < .001f)
-                {
-                    // total internal reflection
-                    refraction = reflection;
-                    ray.origin = nearest_intersection.position + normal * .001f;
-                }
-                else
-                {
-                    // NOTE: IMPORTANT--OFFSET IS POSSIBLY A NEGATIVE MARGIN TO AVOID SELF-INTERSECTION FOR REFRACTION RAY
-                    ray.origin = nearest_intersection.position + (is_front_face ? -normal : normal) * .001f;
-                }
-
-                ray.direction = glm::normalize(refraction + random_in_unit_sphere * nearest_intersection.material.roughness);
-
-                // Beer-Lambert attenuation (re-using albedo as absorption)
-                const auto attenuation_distance = nearest_intersection.exit - nearest_intersection.depth;
-                const auto attenuation = glm::exp(-material.albedo * attenuation_distance);
-
-                absorption = attenuation;
-                weight = refraction_weight;
-            }
-            else
-            {
-                // diffuse scattering
-
-                // cosine-weighted hemisphere random sampling per lambertian BRDF
-                // heavily modified from the cosine distribution method plus re-basis using orthonormal space
-                // https://www.rorydriscoll.com/2009/01/07/better-sampling/
-
-                #define ENABLE_COSINE_SAMPLING
-                #ifdef ENABLE_COSINE_SAMPLING
-
-                auto disk = glm::diskRand(1.f);
-                const auto z = glm::sqrt(glm::clamp(1.f - disk.x * disk.x - disk.y * disk.y, 0.f, 1.f));
-
-                const auto local_coodinates = glm::vec3{ disk.x, disk.y, z };
-            
-                auto tangent = glm::normalize(glm::cross(normal, glm::vec3{ 0.f, 0.f, 1.f }));
-                if (glm::length2(tangent) < .001f)
-                {
-                    tangent = glm::normalize(glm::cross(normal, glm::vec3{ 0.f, 1.f, 0.f }));
-                }
-
-                const auto bitangent = glm::normalize(glm::cross(tangent, normal));
-
-                const auto basis = glm::mat3{ tangent, bitangent, normal };
-                const auto world_coordinates = basis * local_coodinates;
-
-                ray.origin = nearest_intersection.position + normal * .001f;
-                ray.direction = glm::normalize(world_coordinates);
-
-                #else
-
-                ray.origin = nearest_intersection.position + normal * .001f;
-                ray.direction = glm::normalize(reflection + random_in_unit_sphere);
-
-                #endif
-
-                absorption = albedo;
-                weight = diffuse_weight;
-            }
-
-            auto path = glm::vec3{ 0.f };
-
-            #define ENABLE_DLS
-            #ifdef ENABLE_DLS
-
-            // DIRECT LIGHT SAMPLING PATH TERMINATION
-
-            if (!emissive_objects.empty())
-            {
-                auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f }; 
-                const auto emitter_random = glm::linearRand(0.f, 1.f);
-                auto emitter_cdf = 0.f;
-                for (const auto& emitter : emissive_objects)
-                {
-                    emitter_cdf += emitter.probability;
-                    if (emitter_random <= emitter_cdf)
-                    {
-                        sampled_emitter = emitter;
-                        break;
-                    }
-                }
-
-                if (sampled_emitter.object)
-                {
-                    // direct light importance sampling https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/
-                    const auto light_sample = sampled_emitter.object->sample();
-                    const auto light_normal = sampled_emitter.object->normal_of(light_sample);
-
-                    auto light_direction = light_sample - ray.origin;
-                    auto distance2 = glm::length2(light_direction);
-                    light_direction = glm::normalize(light_direction);
-
-                    const auto light_area = sampled_emitter.object->area;
-
-                    const auto normal_cosine = glm::clamp(glm::dot(normal, light_direction), 0.f, 1.f);
-                    const auto light_cosine = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
-                    const auto inverse_light_cosine = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
-
-                    // next-event estimation direct light sampling per bounce
-                    // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
-                    auto light_ray = Ray
-                    {
-                        .origin = ray.origin + normal * .001f,
-                        .direction = light_direction,
-                    };
-
-                    const auto radiance = sampled_emitter.object->material.emission;
-                    const auto pdf = distance2 / (light_cosine * light_area);
-
-                    const auto occlusion = compute_nearest_intersection(light_ray);
-                    if (occlusion.hit && occlusion.object == sampled_emitter.object)
-                    {
-                        const auto geometry = (normal_cosine * inverse_light_cosine) / distance2;
-                        path += absorption * radiance * geometry * pdf;
-                    }
-                }
-            }
-            
-            #endif
-
-            // STANDARD PATH TERMINATION
-            {
-                path += absorption * trace(ray, bounces - 1, output_intersection) / weight;
-            }
-
-            return path;
-        }
-        else
-        {
-            if constexpr (ENABLE_SKYBOX)
-            {
-                const auto uv = compute_skybox_uv_coordinates(ray.direction);
-                const auto sample = skybox->Sample(uv.x, uv.y);
-                return glm::vec3{ sample.r / 255.f, sample.g / 255.f, sample.b / 255.f };
-            }
-        }
-
-        return glm::vec3{ 0.f };
-    };
 
     Real compute_focal_length(Real fov)
     {
@@ -859,7 +472,7 @@ public:
 
     #ifdef CORNELL
 
-        scene_instances.emplace_back(cornell_box());
+        _scene_instances.emplace_back(cornell_box());
 
         static const auto sphere = Mesh
         {
@@ -879,7 +492,7 @@ public:
                 }
             }
         };
-        scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
+        _scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), sphere });
 
         static const auto smoke = Mesh
         {
@@ -903,7 +516,7 @@ public:
                 }
             }
         };
-        scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), smoke });
+        _scene_instances.emplace_back(new MeshInstance{ glm::identity<glm::mat4>(), smoke });
 
         static const auto prism = Mesh
         {
@@ -929,7 +542,7 @@ public:
             glm::identity<glm::mat4>(),
             prism
         };
-        scene_instances.emplace_back(prism_instance);
+        _scene_instances.emplace_back(prism_instance);
 
         static const auto suzanne = monkey(PBRMaterial
         {
@@ -946,7 +559,7 @@ public:
             glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .55f }), glm::vec3{ -.75f, .75f, .75f }), glm::radians(-200.f), glm::vec3{ 1.f, .4f, 0.f }),
             suzanne
         };
-        scene_instances.emplace_back(monkey_instance);
+        _scene_instances.emplace_back(monkey_instance);
 
     #elifdef CORNELL2
 
@@ -954,7 +567,7 @@ public:
         yaw_degrees = 0.f;
         pitch_degrees = 0.f;
 
-        scene_instances.emplace_back(cornell_box());
+        _scene_instances.emplace_back(cornell_box());
 
         static const auto material = PBRMaterial
         {
@@ -972,7 +585,7 @@ public:
             cuboid
         };
 
-        scene_instances.emplace_back(cuboid_instance);
+        _scene_instances.emplace_back(cuboid_instance);
 
         const auto cuboid2 = cube(material);
         static const auto cuboid2_instance = new MeshInstance
@@ -981,11 +594,11 @@ public:
             cuboid2
         };
 
-        scene_instances.emplace_back(cuboid2_instance);
+        _scene_instances.emplace_back(cuboid2_instance);
 
     #else
         
-        scene_instances.emplace_back(test_spheres());
+        _scene_instances.emplace_back(test_spheres());
 
         static const auto utah = teapot(PBRMaterial
         {
@@ -1002,7 +615,7 @@ public:
             glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
             utah
         };
-        scene_instances.emplace_back(utah_instance);
+        _scene_instances.emplace_back(utah_instance);
 
         // NOTE: for radiance cache testing only!!
         // scene_instances.emplace_back(new MeshInstance
@@ -1030,38 +643,18 @@ public:
 
     #endif
 
-        tlas = new TLAS{ scene_instances };
+        _tlas = new TLAS{ _scene_instances };
 
         auto world_minimum = glm::vec3{ std::numeric_limits<Real>::max() };
         auto world_maximum = glm::vec3{ std::numeric_limits<Real>::lowest() };
 
-        for (auto instance : scene_instances)
+        for (auto instance : _scene_instances)
         {
             world_minimum = glm::min(world_minimum, instance->volume->origin);
-            world_maximum = glm::max(world_maximum, instance->volume->extent);
-
-            for (auto object : instance->mesh)
-            {
-                if (object && object->material.emission != glm::vec3{ 0.f })
-                {
-                    emissive_objects.emplace_back(Emitter
-                    { 
-                        .object = object, 
-                        .power = glm::length(object->material.emission), 
-                        .probability = 0.f,
-                    });
-                }
-            }
+            world_maximum = glm::max(world_maximum, instance->volume->extent); 
         }
 
-        cache = RadianceCache{ world_minimum, world_maximum, .5f };
-
-        for (auto& emitter : emissive_objects)
-        {
-            // pre-compute the probability of sampling each emitter weighted by emissivity as part of importance sampling
-            emitter.probability = compute_emissivity(emitter) / std::accumulate(emissive_objects.begin(), emissive_objects.end(), 0.f, 
-                [&](auto sum, auto emitter) { return sum + compute_emissivity(emitter); });
-        }
+        cache = RadianceCache{ world_minimum, world_maximum, 10.f };
 
 		return true;
 	}
@@ -1258,6 +851,12 @@ public:
             dirty = true;
         }
 
+        if (GetKey(olc::Key::N).bPressed)
+        {
+            ENABLE_SKYBOX = !ENABLE_SKYBOX;
+            dirty = true;
+        }
+
         statistics_timer += fElapsedTime;
         if (statistics_timer > 2.f)
         {
@@ -1362,7 +961,7 @@ public:
                     jittered_ray.direction = glm::normalize(focal_point - jittered_ray.origin);
                 }
 
-                auto result = trace(jittered_ray, _bounces, intersection);
+                auto result = trace(jittered_ray, intersection, _bounces);
 
                 REVALIDATE(result.r);
                 REVALIDATE(result.g);

@@ -58,6 +58,7 @@
         "cstddef": "cpp",
         "__config": "cpp",
         "numeric": "cpp",
-        "tuple": "cpp"
+        "tuple": "cpp",
+        "numbers": "cpp"
     }
 }

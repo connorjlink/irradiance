@@ -70,6 +70,7 @@ namespace ir
         bool hit;
         Object* object = nullptr;
         glm::vec2 uv;
+        Ray outgoing;
     };
 
     inline std::vector<std::string> split(std::string text, const std::string& delimiter)
