@@ -53,13 +53,13 @@ namespace ir
     private:
         // equivalent to BRDF in some cases
         virtual ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t bounces) const = 0;
-        virtual Real pdf(const glm::vec3& incoming, const RayIntersection& intersection) const = 0;
+        virtual Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const = 0;
 
     public:
         ShaderResult sample(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t bounces) const
         {
             auto brdf = evaluate(incoming, intersection, bounces);
-            brdf.absorption /= pdf(incoming, intersection);
+            brdf.absorption /= glm::max(pdf(incoming, brdf.outgoing.direction, brdf.intersection), EPSILON_F);
             return brdf;
         }
     };
@@ -88,7 +88,7 @@ namespace ir
             };
         }
 
-        Real pdf(const glm::vec3&, const RayIntersection&) const override
+        Real pdf(const glm::vec3&, const glm::vec3&, const RayIntersection&) const override
         {
             // environment sampled deterministically, so MIS should not apply de-bias weighting
             return 1.f;
@@ -112,7 +112,7 @@ namespace ir
     class DiffuseShader : public Shader
     {
     private:
-        ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t) const override
+        ShaderResult evaluate(const glm::vec3&, const RayIntersection& intersection, std::int32_t) const override
         {
             // cosine-weighted hemisphere random sampling per lambertian BRDF
             // heavily modified from the cosine distribution method plus re-basis using orthonormal space
@@ -125,9 +125,8 @@ namespace ir
 
             const auto disk = glm::diskRand(1.f);
             const auto z = glm::sqrt(glm::clamp(1.f - disk.x * disk.x - disk.y * disk.y, 0.f, 1.f));
+            const auto local_coordinates = glm::vec3{ disk.x, disk.y, z };
 
-            const auto local_coodinates = glm::vec3{ disk.x, disk.y, z };
-        
             auto tangent = glm::normalize(glm::cross(normal, glm::vec3{ 0.f, 0.f, 1.f }));
             if (glm::length2(tangent) < EPSILON_F)
             {
@@ -137,7 +136,7 @@ namespace ir
             const auto bitangent = glm::normalize(glm::cross(tangent, normal));
 
             const auto basis = glm::mat3{ tangent, bitangent, normal };
-            const auto world_coordinates = basis * local_coodinates;
+            const auto world_coordinates = glm::normalize(basis * local_coordinates);
 
             auto outgoing = Ray
             {
@@ -156,19 +155,29 @@ namespace ir
 
             #endif
 
-            const auto& absorption = intersection.material.albedo;
+            auto albedo = intersection.material.albedo;
+
+            if (intersection.material.texture)
+            {
+                const auto& uv = intersection.uv;
+                const auto tex = intersection.material.texture->Sample(uv.x, uv.y, intersection.position);
+                albedo = glm::vec3{ tex.r, tex.g, tex.b } / 255.f;
+            }
+
+            const auto view_angle = glm::clamp(glm::dot(outgoing.direction, intersection.normal), 0.f, 1.f);
+            const auto absorption = (albedo * view_angle) / glm::pi<Real>();
 
             return ShaderResult
-            {
-                .absorption = absorption,
-                .outgoing = outgoing,
-                .intersection = intersection,
+            { 
+                .absorption = absorption, 
+                .outgoing = outgoing, 
+                .intersection = intersection
             };
         }
 
-        Real pdf(const glm::vec3& incoming, const RayIntersection& intersection) const override
+        Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
-            const auto normal_angle = glm::clamp(glm::dot(incoming, intersection.normal), 0.f, 1.f);
+            const auto normal_angle = glm::clamp(glm::dot(outgoing, intersection.normal), 0.f, 1.f);
             return normal_angle / glm::pi<Real>();
         }
     };
@@ -270,7 +279,7 @@ namespace ir
             };
         }
 
-        Real pdf(const glm::vec3& incoming, const RayIntersection& intersection) const override
+        Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
             #pragma message("TODO: implement metallic shader PDF")   
             return 1.f;
@@ -282,7 +291,12 @@ namespace ir
     private:
         ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t) const override
         {
-            const auto dielectric_reflectance = 1.f;
+            const auto normal_angle = glm::clamp(glm::dot(-incoming, intersection.normal), 0.f, 1.f);
+            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
+            const auto F = MetallicShader::compute_fresnel_F(F0, 1.f - normal_angle);
+
+            const auto mean = glm::compAdd(F) / 3.f;
+            const auto dielectric_reflectance = glm::clamp(mean, 0.f, 1.f);
 
             auto absorption = glm::vec3{ 1.f };
             auto outgoing = Ray{};
@@ -297,10 +311,6 @@ namespace ir
 
                 #else
 
-                const auto normal_angle = glm::clamp(glm::dot(incoming, intersection.normal), 0.f, 1.f);
-
-                const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
-                const auto F = MetallicShader::compute_fresnel_F(F0, 1.f - normal_angle);
                 const auto specular = F;
 
                 #endif
@@ -365,7 +375,7 @@ namespace ir
             };
         }
 
-        Real pdf(const glm::vec3& incoming, const RayIntersection& intersection) const override
+        Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
             #pragma message("TODO: implement dielectric shader PDF")
             return 1.f;
@@ -428,6 +438,7 @@ namespace ir
                 auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f }; 
                 const auto emitter_random = glm::linearRand(0.f, 1.f);
                 auto emitter_cdf = 0.f;
+                #warning PRECOMPUTE THE CDF
                 for (const auto& emitter : emissive_objects)
                 {
                     emitter_cdf += emitter.probability;
@@ -462,14 +473,14 @@ namespace ir
                     };
 
                     const auto radiance = sampled_emitter.object->material.emission;
-                    const auto pdf = (light_cosine * light_area) / (sampled_emitter.probability * distance2);
+                    const auto pdf = (sampled_emitter.probability * distance2) / (light_cosine * light_area);
 
                     const auto absorption = trace(light_ray, nearest_intersection, bounces - 1);
 
                     if (nearest_intersection.hit && nearest_intersection.object == sampled_emitter.object)
                     {
                         const auto geometry = (normal_cosine * light_cosine) / distance2;
-                        path = absorption * radiance * geometry * pdf;
+                        path = (absorption * radiance * geometry) / pdf;
                     }
                 }
             }
@@ -482,7 +493,7 @@ namespace ir
             };
         }
 
-        Real pdf(const glm::vec3& incoming, const RayIntersection& intersection) const override
+        Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
             #pragma message("TODO: implement NEE shader PDF")
             return 1.f;
@@ -501,7 +512,7 @@ namespace ir
             return glm::vec3{ 0.f };
         }
 
-        const auto nearest_intersection = compute_nearest_intersection(ray);
+        auto nearest_intersection = compute_nearest_intersection(ray);
         if (bounces == _bounces && nearest_intersection.hit)
         {
             output_intersection = nearest_intersection;
@@ -540,9 +551,11 @@ namespace ir
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, albedo, material.metallicity);
             const auto F = MetallicShader::compute_fresnel_F(F0, 1.f - normal_angle);
 
+            const auto transmission = material.transmission;
+
             const auto metallic_probability = material.metallicity;
-            const auto dielectric_probability = (1.f - material.metallicity) * glm::compMax(F);
-            const auto diffuse_probability = (1.f - material.metallicity) * (1.f - glm::compMax(F));
+            const auto dielectric_probability = (1.f - material.metallicity) * transmission;
+            const auto diffuse_probability = (1.f - material.metallicity) * (1.f - transmission);
 
             const auto total = metallic_probability + dielectric_probability + diffuse_probability;
 
@@ -552,9 +565,6 @@ namespace ir
 
             const auto random = glm::linearRand(0.f, 1.f);
 
-            auto absorption = glm::vec3{ 1.f };
-            auto weight = 1.f;
-
             auto path = glm::vec3{ 0.f };
 
             auto sigmoid = [](Real x, Real coefficient)
@@ -563,62 +573,69 @@ namespace ir
                 return glm::pow(saturated, coefficient) / (glm::pow(saturated, coefficient) + glm::pow(1.f - saturated, coefficient));
             };
 
+            // NEE only works well for diffuse-type surfaces
             const auto nee_probability = sigmoid(1.f - material.metallicity, 3.f);
+
+            //#define ENABLE_NEE
+            #ifdef ENABLE_NEE
 
             if (glm::linearRand(0.f, 1.f) < nee_probability)
             {
                 // NEE sampling
-
-                //#define ENABLE_DLS
-                #ifdef ENABLE_DLS
 
                 static auto next_event_estimation_shader = new NextEventEstimationShader{ _scene_instances };
                 const auto nee_sample = next_event_estimation_shader->sample(ray.direction, nearest_intersection, bounces - 1);
                 output_intersection.outgoing = nee_sample.outgoing;
 
                 path += nee_sample.absorption / nee_probability;
-
-                #endif
             }
             else
+
+            #endif
             {
                 // BRDF sampling
+
+                auto absorption = glm::vec3{ 1.f };
+                auto material_pdf = 1.f;
+
+                auto intersection = nearest_intersection;
+                intersection.normal = normal;
 
                 if (random < metallic_weight)
                 {
                     // metallic reflection
 
                     static auto metallic_shader = new MetallicShader{};
-                    const auto metallic_sample = metallic_shader->sample(ray.direction, nearest_intersection, bounces - 1);
+                    const auto metallic_sample = metallic_shader->sample(ray.direction, intersection, bounces - 1);
                     output_intersection.outgoing = metallic_sample.outgoing;
 
                     absorption = metallic_sample.absorption;
-                    weight = metallic_weight;
+                    material_pdf = 1.f / metallic_weight;
                 }
                 else if (random < metallic_weight + dielectric_weight)
                 {
                     // dielectric reflection/refraction
 
                     static auto dielectric_shader = new DielectricShader{};
-                    const auto dielectric_sample = dielectric_shader->sample(ray.direction, nearest_intersection, bounces - 1);
+                    const auto dielectric_sample = dielectric_shader->sample(ray.direction, intersection, bounces - 1);
                     output_intersection.outgoing = dielectric_sample.outgoing;
 
                     absorption = dielectric_sample.absorption;
-                    weight = dielectric_weight;
+                    material_pdf = 1.f / dielectric_weight;
                 }
                 else
                 {
                     // diffuse scattering
 
                     static auto diffuse_shader = new DiffuseShader{};
-                    const auto diffuse_sample = diffuse_shader->sample(ray.direction, nearest_intersection, bounces - 1);
+                    const auto diffuse_sample = diffuse_shader->sample(ray.direction, intersection, bounces - 1);
                     output_intersection.outgoing = diffuse_sample.outgoing;
 
                     absorption = diffuse_sample.absorption;
-                    weight = diffuse_weight;
+                    material_pdf = 1.f / diffuse_weight;
                 }
 
-                const auto brdf = absorption * trace(ray, output_intersection, bounces - 1) / weight;
+                const auto brdf = absorption * trace(output_intersection.outgoing, output_intersection, bounces - 1) / material_pdf;
 
                 #ifdef ENABLE_DLS
 
@@ -638,7 +655,7 @@ namespace ir
         static auto environment_shader = new EnvironmentShader{};
         const auto skybox = environment_shader->sample(ray.direction, nearest_intersection, bounces - 1);
         return skybox.absorption;
-    };
+    }
 }
 
 #endif

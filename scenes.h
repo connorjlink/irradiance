@@ -183,7 +183,7 @@ namespace ir
                     .refraction_index = 1.85f,
                     .anisotropy = 0.f,
                     .roughness = .01f,
-                    .transmission = .91f,
+                    .transmission = .96f,
                 }
             },
             new Cuboid
@@ -198,6 +198,21 @@ namespace ir
                     .refraction_index = 1.01f,
                     .anisotropy = 0.f,
                     .roughness = .3f,
+                    .transmission = 1.f,
+                }
+            },
+            new Cuboid
+            {
+                glm::vec3{ -.5f, -8.5f, -.5f },
+                glm::vec3{ 1.f, 1.f, 1.f },
+                PBRMaterial
+                {
+                    .albedo = glm::vec3{ .5f, 1.f, .6f },
+                    .emission = glm::vec3{ 0.f, 0.f, 0.f },
+                    .metallicity = .1f,
+                    .refraction_index = 1.51f,
+                    .anisotropy = 0.f,
+                    .roughness = 0.f,
                     .transmission = 1.f,
                 }
             },
