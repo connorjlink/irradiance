@@ -738,7 +738,7 @@ namespace ir
             const auto position = entry + ray.direction * travel;
             const auto normal = glm::sphericalRand(1.f);
 
-            const auto attenuation = glm::exp(-density * travel * material.albedo);
+            const auto attenuation = glm::exp(-density * travel);
             material.albedo *= attenuation;
 
             return 

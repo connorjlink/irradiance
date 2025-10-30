@@ -291,19 +291,28 @@ namespace ir
     private:
         ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t) const override
         {
-            const auto normal_angle = glm::clamp(glm::dot(-incoming, intersection.normal), 0.f, 1.f);
+            const auto NdotI = glm::dot(intersection.normal, -incoming);
+            const auto is_front_face = NdotI > 0.f;
+            const auto normal_angle = glm::clamp(NdotI, 0.f, 1.f);
+
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
             const auto F = MetallicShader::compute_fresnel_F(F0, 1.f - normal_angle);
 
-            const auto mean = glm::compAdd(F) / 3.f;
-            const auto dielectric_reflectance = glm::clamp(mean, 0.f, 1.f);
+            // refraction probability with Schlick's approximation
+            const auto ior = intersection.material.refraction_index;
+            auto reflectance = (1.f - ior) / (1.f + ior);
+            reflectance *= reflectance;
+
+            const auto schlick = reflectance + (1.f - reflectance) * glm::pow(1.f - normal_angle, 5.f);
+
+            const auto is_total_internal_reflection = (ior > 1.f) && (1.f - normal_angle * normal_angle) > (ior * ior);
 
             auto absorption = glm::vec3{ 1.f };
             auto outgoing = Ray{};
 
-            if (glm::linearRand(0.f, 1.f) < dielectric_reflectance)
+            if (is_total_internal_reflection || glm::linearRand(0.f, 1.f) < schlick)
             {
-                // dielectric reflection
+                // dielectric reflection or total internal reflection
 
                 #ifdef ENABLE_GGX_SPECULAR
 
@@ -336,26 +345,9 @@ namespace ir
                     ? (1.f / intersection.material.refraction_index) 
                     : intersection.material.refraction_index;
 
-                auto refraction = glm::refract(incoming, intersection.normal, eta);
-
-                // Fresnel term with Schlick's approximation
-                const auto ior = intersection.material.refraction_index;
-                auto dielectric_reflectance = (1.f - ior) / (1.f + ior);
-                dielectric_reflectance *= dielectric_reflectance;
-
-                if (dielectric_reflectance < EPSILON_F)
-                {
-                    // total internal reflection, need to reflect instead of refract
-                    
-                    refraction = glm::reflect(incoming, intersection.normal);
-                    outgoing.origin = intersection.position + intersection.normal * EPSILON_F;
-                }
-                else
-                {
-                    // NOTE: IMPORTANT--OFFSET IS POSSIBLY A NEGATIVE MARGIN TO AVOID SELF-INTERSECTION FOR REFRACTION RAY
-                    const auto is_front_face = glm::dot(intersection.normal, incoming) > 0.f;
-                    outgoing.origin = intersection.position + (is_front_face ? -intersection.normal : intersection.normal) * EPSILON_F;
-                }
+                auto refraction = glm::refract(-incoming, intersection.normal, eta);
+                
+                outgoing.origin = intersection.position + (is_front_face ? -intersection.normal : intersection.normal) * EPSILON_F;
 
                 const auto refraction_ray = refraction + random_in_unit_sphere(intersection.normal) * intersection.material.roughness;
                 outgoing.direction = glm::normalize(refraction_ray);

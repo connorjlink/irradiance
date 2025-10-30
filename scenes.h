@@ -240,7 +240,7 @@ namespace ir
                     glm::vec3{ 4.f, 4.f, 4.f },
                     PBRMaterial
                     {
-                        .albedo = glm::vec3{ .5f, 1.f, .6f },
+                        .albedo = glm::vec3{ 1.f, 1.f, 1.f },
                         .emission = glm::vec3{ 0.f, 0.f, 0.f },
                         .metallicity = 0.f,
                         .anisotropy = 0.f,
