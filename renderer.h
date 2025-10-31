@@ -2,6 +2,9 @@
 #define IRRADIANCE_RENDERER_H
 
 #include "utility.h"
+#include "sampling.h"
+#include "accelerator.h"
+
 #include "olcPixelGameEngine.h"
 
 #include "glm/ext/scalar_common.hpp"
@@ -14,95 +17,14 @@ namespace ir
     static constexpr Real EPSILON_F = .001f;
     static const glm::vec3 EPSILON = glm::vec3{ EPSILON_F, EPSILON_F, EPSILON_F };
 
-    struct BoundingVolume
+    struct ObjectPDF
     {
     public:
-        glm::vec3 origin;
-        glm::vec3 size;
-        glm::vec3 extent;
-        glm::vec3 centroid;
-        std::vector<Object*> contents;
-
-    public:
-        BoundingVolume(const glm::vec3& origin, const glm::vec3& size, const std::vector<Object*>& contents = {})
-            : origin{ origin }, size{ size }, contents{ contents }
-        {
-            centroid = origin + (size * .5f);
-            extent = origin + size;
-        }
-
-    public:
-        bool contains(const glm::vec3& point) const;
-        bool overlaps(const BoundingVolume& other) const;
-        bool intersects(const Ray& ray) const;
+        virtual Real evaluate(const RayIntersection& intersection) const = 0;
+        virtual glm::vec3 sample() const = 0;
     };
 
-    struct BoundingVolumeHierarchy
-    {
-    public:
-        BoundingVolume* volume = nullptr;
-        // left = right = nullptr -> leaf
-        BoundingVolumeHierarchy* left = nullptr;
-        BoundingVolumeHierarchy* right = nullptr;
-
-    public:
-        BoundingVolumeHierarchy() = default;
-        BoundingVolumeHierarchy(BoundingVolume* volume, BoundingVolumeHierarchy* left, BoundingVolumeHierarchy* right)
-            : volume{ volume }, left{ left }, right{ right }
-        {
-        }
-
-    public:
-        virtual ~BoundingVolumeHierarchy()
-        {
-            delete volume;
-            delete left;
-            delete right;
-        }
-
-    public:
-        virtual RayIntersection intersect(const Ray& ray) const = 0;
-    };
-
-    struct MeshInstance;
-
-    // constructed in object space
-    struct BLAS : public BoundingVolumeHierarchy
-    {
-    public:
-        BLAS(BoundingVolume* volume, BLAS* left, BLAS* right)
-            : BoundingVolumeHierarchy{ volume, left, right }
-        {
-        }
-
-    public:
-        BLAS(const MeshInstance& meshes);
-        BLAS(const std::vector<Object*>& objects);
-
-    public:
-        RayIntersection intersect(const Ray& ray) const override;
-    };
-
-    // constructed in world space
-    struct TLAS : public BoundingVolumeHierarchy
-    {
-    public:
-        std::vector<MeshInstance*> contents;
-
-    public:
-        TLAS(BoundingVolume* volume, TLAS* left, TLAS* right)
-            : BoundingVolumeHierarchy{ volume, left, right }
-        {
-        }
-
-    public:
-        TLAS(const std::vector<MeshInstance*>& meshes);
-
-    public:
-        RayIntersection intersect(const Ray& ray) const override;
-    };
-
-    struct Object
+    struct Object : public ObjectPDF
     {
     public:
         PBRMaterial material;
@@ -122,8 +44,11 @@ namespace ir
 
     public:
         virtual RayIntersection intersect(const Ray& ray) = 0;
-        virtual glm::vec3 sample() = 0;
         virtual glm::vec3 normal_of(const glm::vec3& position) = 0;
+
+    public:
+        virtual Real evaluate(const RayIntersection& intersection) const = 0;
+        virtual glm::vec3 sample() const = 0;
     };
 
     struct Sphere : public Object
@@ -146,8 +71,11 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
-        glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const override;
+        glm::vec3 sample() const override;
     };
 
     struct Triangle : public Object
@@ -194,8 +122,11 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
-        glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const override;
+        glm::vec3 sample() const override;
     };
 
     struct Quadrilateral : public Object
@@ -231,8 +162,11 @@ namespace ir
     
     public:
         RayIntersection intersect(const Ray& ray) override;
-        glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const override;
+        glm::vec3 sample() const override;
     }; 
 
     struct Cuboid : public Object
@@ -252,8 +186,11 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
-        glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const override;
+        glm::vec3 sample() const override;
     };
 
     struct Quadric : public Object
@@ -276,7 +213,7 @@ namespace ir
         }
 
     private:
-        Real function(const glm::vec3& position)
+        Real function(const glm::vec3& position) const
         {
             return (A * position.x * position.x) + (B * position.y * position.y) + (C * position.z * position.z) + 
                    (D * position.x * position.y) + (E * position.x * position.z) + (F * position.y * position.z) +
@@ -285,8 +222,11 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
-        glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const override;
+        glm::vec3 sample() const override;
     };
 
     struct Colloid : public Object
@@ -306,17 +246,21 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) override;
-        glm::vec3 sample() override;
         glm::vec3 normal_of(const glm::vec3& position) override;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const override;
+        glm::vec3 sample() const override;
     };
 
     using Mesh = std::vector<Object*>;
 
-    struct MeshInstance
+    struct MeshInstance : public ObjectPDF
     {
     public:
         glm::mat4 transform;
         glm::mat4 inverse;
+        Real area;
         const Mesh& mesh;
         BoundingVolume* volume;
 
@@ -328,6 +272,7 @@ namespace ir
             : transform{ transform }, mesh{ mesh }
         {
             inverse = glm::inverse(transform);
+            area = 0.f;
 
             auto world_space_minimum = glm::vec3{ std::numeric_limits<Real>::max() };
             auto world_space_maximum = glm::vec3{ std::numeric_limits<Real>::lowest() };
@@ -343,6 +288,8 @@ namespace ir
                 // progressively find the tightest volume containing every sub-object
                 world_space_minimum = glm::min(world_space_minimum, glm::vec3{ transform * glm::vec4{ bounds->origin, 1.f } });
                 world_space_maximum = glm::max(world_space_maximum, glm::vec3{ transform * glm::vec4{ bounds->origin + bounds->size, 1.f } });
+
+                area += object->area;
             }
 
             const auto origin = world_space_minimum - EPSILON;
@@ -355,6 +302,18 @@ namespace ir
 
     public:
         RayIntersection intersect(const Ray& ray) const;
+
+    public:
+        Real evaluate(const RayIntersection& intersection) const
+        {
+            
+        }
+
+        glm::vec3 sample() const
+        {
+            const auto object_index = glm::linearRand(0uz, mesh.size() - 1);
+            return mesh[object_index]->sample();
+        }
     };
 
     Mesh load_obj(const std::string& filepath, const PBRMaterial& default_material);

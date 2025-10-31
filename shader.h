@@ -35,7 +35,7 @@ namespace ir
 
     glm::vec3 trace(Ray&, RayIntersection&, std::int32_t);
 
-    class Shader
+    class Shader : public PDF
     {
     public:
         static glm::vec3 random_in_unit_sphere(const glm::vec3& normal)

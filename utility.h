@@ -70,6 +70,7 @@ namespace ir
         bool hit;
         Object* object = nullptr;
         glm::vec2 uv;
+        Ray incoming;
         Ray outgoing;
     };
 
