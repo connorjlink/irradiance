@@ -1,11 +1,11 @@
 #ifndef IRRADIANCE_MESHES_H
 #define IRRADIANCE_MESHES_H
 
-#include "glm/glm.hpp"
-#include "glm/gtc/matrix_transform.hpp"
-
 #include "renderer.h"
 #include "textures.h"
+
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 
 // meshes.h
 // (c) 2025 Connor J. Link. All Rights Reserved.

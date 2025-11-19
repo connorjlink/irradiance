@@ -7,6 +7,8 @@
 
 #include "olcPixelGameEngine.h"
 
+#include "glm/gtc/constants.hpp"
+#include "glm/gtc/random.hpp"
 #include "glm/ext/scalar_common.hpp"
 
 // renderer.h
@@ -14,9 +16,6 @@
 
 namespace ir
 {
-    static constexpr Real EPSILON_F = .001f;
-    static const glm::vec3 EPSILON = glm::vec3{ EPSILON_F, EPSILON_F, EPSILON_F };
-
     struct ObjectPDF
     {
     public:
@@ -53,6 +52,9 @@ namespace ir
 
     struct Sphere : public Object
     {
+    private:
+        static const UniformSpherePDF sphere_pdf;
+
     public:
         glm::vec3 center;
         Real radius;
@@ -306,12 +308,13 @@ namespace ir
     public:
         Real evaluate(const RayIntersection& intersection) const
         {
-            
+            return intersection.object->evaluate(intersection);
         }
 
         glm::vec3 sample() const
         {
-            const auto object_index = glm::linearRand(0uz, mesh.size() - 1);
+            const auto maximum = static_cast<int>(mesh.size() - 1);
+            const auto object_index = glm::linearRand(0, maximum);
             return mesh[object_index]->sample();
         }
     };

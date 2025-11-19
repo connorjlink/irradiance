@@ -9,6 +9,7 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/glm.hpp"
+#include "glm/gtc/constants.hpp"
 
 #include "olcPixelGameEngine.h"
 
@@ -19,6 +20,9 @@ namespace ir
 {
     // would double benefit accuracy meaningfully for the ray tracer?
     using Real = float;
+
+    static constexpr Real EPSILON_F = .001f;
+    static const glm::vec3 EPSILON = glm::vec3{ EPSILON_F, EPSILON_F, EPSILON_F };
 
     struct Ray
     {

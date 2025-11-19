@@ -6,6 +6,7 @@
 
 #include "utility.h"
 
+#include "glm/gtc/random.hpp"
 #include "glm/gtx/norm.hpp"
 
 namespace ir
@@ -56,6 +57,20 @@ namespace ir
             const auto world_coordinates = glm::normalize(basis * local_coordinates);
 
             return world_coordinates;
+        }
+    };
+
+    class UniformSpherePDF : public PDF
+    {
+    public:
+        Real evaluate(const glm::vec3& direction) const override
+        {
+            return 1.f / (4.f * glm::pi<Real>());
+        }
+
+        glm::vec3 sample() const override
+        {
+            return glm::sphericalRand(1.f);
         }
     };
 }

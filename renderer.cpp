@@ -20,6 +20,8 @@
 
 namespace ir
 {
+    const UniformSpherePDF Sphere::sphere_pdf = UniformSpherePDF{};
+
     BoundingVolume* Object::bounds()
     {
         return bound;
@@ -74,15 +76,14 @@ namespace ir
         return glm::normalize(position - center);
     }
 
-    Real Sphere::evaluate(const glm::vec3& direction) const
+    Real Sphere::evaluate(const RayIntersection&) const
     {
-        // uniform sphere PDF
-        return 1.f / (4.f * glm::pi<Real>());
+        return sphere_pdf.evaluate(glm::vec3{});
     }
 
     glm::vec3 Sphere::sample() const
     {
-        return center + glm::sphericalRand(radius);
+        return center + (radius * sphere_pdf.sample());
     }
 
     RayIntersection Triangle::intersect(const Ray& ray)
@@ -158,7 +159,7 @@ namespace ir
         return normal;
     }
 
-    Real Triangle::evaluate(const glm::vec3& direction) const
+    Real Triangle::evaluate(const RayIntersection&) const
     {
         // uniform triangle PDF
         return 1.f / area;
@@ -336,7 +337,7 @@ namespace ir
         return glm::vec3{ 0.f };
     }
 
-    Real Cuboid::evaluate(const glm::vec3& direction) const
+    Real Cuboid::evaluate(const RayIntersection&) const
     {
         // uniform cuboid PDF
         return 1.f / area;
@@ -457,7 +458,7 @@ namespace ir
         });
     }
 
-    Real Quadric::evaluate(const glm::vec3& direction) const
+    Real Quadric::evaluate(const RayIntersection& direction) const
     {
         // uniform quadric PDF
         return 1.f / area;
@@ -525,7 +526,7 @@ namespace ir
         return glm::sphericalRand(1.f);
     }
 
-    Real Colloid::evaluate(const glm::vec3& direction) const
+    Real Colloid::evaluate(const RayIntersection& direction) const
     {
         // uniform sub-object PDF
         return 1.f / container->area;
@@ -678,7 +679,6 @@ namespace ir
         // NOTE: for simplicity, ignore groups and objects
         // NOTE: for simplicity, always assume "s 1" to avoid having to track per group or object
 
-        #warning TODO USE SHARED POINTERS WITH IMPROVED OWNERSHIP SEMANTICS AMONG PRIMITIVES (WEAK PTR?)
         std::map<std::string, olc::Sprite*> texture_cache{};
 
         auto load_texture = [&](const std::string& path)

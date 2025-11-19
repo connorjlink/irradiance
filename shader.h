@@ -30,12 +30,17 @@ namespace ir
         RayIntersection intersection = MISS;
     };
 
+    glm::vec3 compute_base_reflectance(const PBRMaterial& material)
+    {
+        return glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, material.albedo, material.metallicity);
+    }
+
     #define INTERNAL_REVALIDATE(x, y) do { if (glm::isinf(x) || glm::isnan(x)) { x = y; } } while (0)
     #define REVALIDATE(x) INTERNAL_REVALIDATE(x, 0.f)
 
     glm::vec3 trace(Ray&, RayIntersection&, std::int32_t);
 
-    class Shader : public PDF
+    class Shader
     {
     public:
         static glm::vec3 random_in_unit_sphere(const glm::vec3& normal)
@@ -182,6 +187,8 @@ namespace ir
         }
     };
     
+    #define ENABLE_GGX_SPECULAR
+
     class MetallicShader : public Shader
     {
     public:
@@ -221,22 +228,25 @@ namespace ir
         }
     
     private:
-        glm::vec3 shade_ggx(const glm::vec3& incoming, const RayIntersection& intersection)
+        glm::vec3 shade_ggx(const glm::vec3& incoming, const RayIntersection& intersection) const
         {
+            static constexpr auto ROUGHNESS_MINIMUM = .1f;
+            static constexpr auto VIEW_ANGLE_MINIMUM = .001f;
+
             const auto V = -incoming;
             
             const auto R = glm::reflect(V, intersection.normal); 
             const auto H = glm::normalize(R + V);
             
-            const auto roughness = glm::max(intersection.object->material.roughness, .01f);
+            const auto roughness = glm::max(intersection.object->material.roughness, ROUGHNESS_MINIMUM);
 
             const auto D = compute_GGX_D(H, intersection.normal, roughness);
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
-            const auto F = compute_fresnel_F(F0, glm::max(0.f, glm::dot(H, V)));
+            const auto F = compute_fresnel_F(F0, glm::max(glm::dot(H, V), 0.f));
             const auto G = compute_smith_G(R, V, intersection.normal, roughness);
 
-            const auto reflection_angle = glm::max(0.f, glm::dot(intersection.normal, R));
-            const auto view_angle = glm::clamp(glm::dot(intersection.normal, V), .0005f, 1.f);
+            const auto reflection_angle = glm::max(glm::dot(intersection.normal, R), 0.f);
+            const auto view_angle = glm::clamp(glm::dot(intersection.normal, V), VIEW_ANGLE_MINIMUM, 1.f);
 
             const auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
 
@@ -248,7 +258,7 @@ namespace ir
         {
             #ifdef ENABLE_GGX_SPECULAR
 
-            const auto specular = shade_ggx();
+            const auto specular = shade_ggx(incoming, intersection);
 
             #else
 
@@ -281,8 +291,23 @@ namespace ir
 
         Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
-            #pragma message("TODO: implement metallic shader PDF")   
-            return 1.f;
+            const auto N = intersection.normal;
+            const auto V = -incoming;
+            const auto L = outgoing;
+
+            const auto H = glm::normalize(V + L);
+
+            const auto roughness = glm::max(intersection.object->material.roughness, EPSILON_F);
+
+            const auto normal_cosine = glm::max(glm::dot(N, H), 0.f);
+            const auto view_cosine = glm::max(glm::dot(V, H), 0.f);
+
+            const auto D = compute_GGX_D(H, N, roughness);
+
+            const auto pdf_h = D * normal_cosine;
+            const auto pdf_l = pdf_h / glm::max(4.f * view_cosine, EPSILON_F);
+
+            return pdf_l;
         }
     };
 
@@ -316,7 +341,8 @@ namespace ir
 
                 #ifdef ENABLE_GGX_SPECULAR
 
-                const auto specular = shade_ggx();
+                //const auto specular = shade_ggx();
+                const auto specular = F;
 
                 #else
 
@@ -345,10 +371,9 @@ namespace ir
                     ? (1.f / intersection.material.refraction_index) 
                     : intersection.material.refraction_index;
 
-                auto refraction = glm::refract(-incoming, intersection.normal, eta);
-                
                 outgoing.origin = intersection.position + (is_front_face ? -intersection.normal : intersection.normal) * EPSILON_F;
-
+                    
+                const auto refraction = glm::refract(-incoming, intersection.normal, eta);
                 const auto refraction_ray = refraction + random_in_unit_sphere(intersection.normal) * intersection.material.roughness;
                 outgoing.direction = glm::normalize(refraction_ray);
 
@@ -369,8 +394,14 @@ namespace ir
 
         Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
-            #pragma message("TODO: implement dielectric shader PDF")
-            return 1.f;
+            const auto normal_angle = glm::clamp(glm::dot(intersection.normal, -incoming), 0.f, 1.f);
+
+            const auto F0 = compute_base_reflectance(intersection.object->material);
+            const auto F = MetallicShader::compute_fresnel_F(F0, normal_angle);
+            const auto F_mean = glm::clamp((F.r + F.g + F.b) / 3.f, 0.f, 1.f);
+
+            const auto is_reflection = glm::dot(outgoing, intersection.normal) > 0.f;
+            return is_reflection ? F_mean : (1.f - F_mean);
         }
     };
 
@@ -395,11 +426,25 @@ namespace ir
                 }
             }
 
+            const auto total = std::accumulate(emissive_objects.begin(), emissive_objects.end(), 0.f, 
+                [&](auto sum, auto emitter) { return sum + compute_emissivity(emitter); });
+
             for (auto& emitter : emissive_objects)
             {
                 // pre-compute the probability of sampling each emitter weighted by emissivity as part of importance sampling
-                emitter.probability = compute_emissivity(emitter) / std::accumulate(emissive_objects.begin(), emissive_objects.end(), 0.f, 
-                    [&](auto sum, auto emitter) { return sum + compute_emissivity(emitter); });
+                emitter.probability = compute_emissivity(emitter) / total;
+            }
+
+            auto prefix_sum = 0.f;
+            for (auto& emitter : emissive_objects)
+            {
+                prefix_sum += emitter.probability;
+                cdf.push_back(prefix_sum);
+            }
+
+            if (!cdf.empty())
+            {
+                cdf.back() = 1.f;
             }
         }
 
@@ -413,6 +458,7 @@ namespace ir
 
     private:
         std::vector<Emitter> emissive_objects;
+        std::vector<Real> cdf;
 
     private:
         Real compute_emissivity(const Emitter& emitter)
@@ -420,29 +466,36 @@ namespace ir
             return emitter.object->area * glm::length(emitter.object->material.emission);
         };
 
+        int sample_emitter_index() const
+        {
+            if (cdf.empty()) 
+            {
+                return -1;
+            }
+
+            const auto u = glm::linearRand(0.f, 1.f - std::numeric_limits<Real>::epsilon());
+            const auto it = std::upper_bound(cdf.begin(), cdf.end(), u);
+            
+            int idx = int(it - cdf.begin());
+            if (idx >= int(emissive_objects.size()))
+            {
+                idx = int(emissive_objects.size()) - 1;
+            }
+            
+            return idx;
+        }
+
         ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t bounces) const override
         {
-            auto path = glm::vec3{ 1.f };
-            auto nearest_intersection = RayIntersection{};
+            auto path = glm::vec3{ 0.f };
 
             if (!emissive_objects.empty())
             {
-                auto sampled_emitter = Emitter{ nullptr, 0.f, 0.f }; 
-                const auto emitter_random = glm::linearRand(0.f, 1.f);
-                auto emitter_cdf = 0.f;
-                #warning PRECOMPUTE THE CDF
-                for (const auto& emitter : emissive_objects)
+                const int index = sample_emitter_index();
+                if (index >= 0)
                 {
-                    emitter_cdf += emitter.probability;
-                    if (emitter_random <= emitter_cdf)
-                    {
-                        sampled_emitter = emitter;
-                        break;
-                    }
-                }
+                    const auto& sampled_emitter = emissive_objects[index];
 
-                if (sampled_emitter.object)
-                {
                     // direct light importance sampling https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html#samplinglightsdirectly/
                     const auto light_sample = sampled_emitter.object->sample();
                     const auto light_normal = sampled_emitter.object->normal_of(light_sample);
@@ -451,28 +504,38 @@ namespace ir
                     auto distance2 = glm::length2(light_direction);
                     light_direction = glm::normalize(light_direction);
 
-                    const auto light_area = sampled_emitter.object->area;
-
                     const auto normal_cosine = glm::clamp(glm::dot(intersection.normal, light_direction), 0.f, 1.f);
-                    const auto light_cosine = glm::clamp(glm::dot(light_normal, light_direction), 0.f, 1.f);
+                    const auto light_cosine = glm::clamp(glm::dot(light_normal, -light_direction), 0.f, 1.f);
 
-                    // next-event estimation direct light sampling per bounce
-                    // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
-                    auto light_ray = Ray
+                    if (normal_cosine > 0.f && light_cosine > 0.f)
                     {
-                        .origin = intersection.position + intersection.normal * EPSILON_F,
-                        .direction = light_direction,
-                    };
+                        // next-event estimation direct light sampling per bounce
+                        // https://www.cg.tuwien.ac.at/sites/default/files/course/4411/attachments/08_next%20event%20estimation.pdf
+                        auto light_ray = Ray
+                        {
+                            .origin = intersection.position + intersection.normal * EPSILON_F,
+                            .direction = light_direction,
+                        };
 
-                    const auto radiance = sampled_emitter.object->material.emission;
-                    const auto pdf = (sampled_emitter.probability * distance2) / (light_cosine * light_area);
+                        const auto irradiance = sampled_emitter.object->material.emission;
+                        const auto light_area = sampled_emitter.object->area;
+                        const auto probability = sampled_emitter.probability;
+                        const auto pdf = (probability * distance2) / (light_cosine * light_area);
 
-                    const auto absorption = trace(light_ray, nearest_intersection, bounces - 1);
-
-                    if (nearest_intersection.hit && nearest_intersection.object == sampled_emitter.object)
-                    {
-                        const auto geometry = (normal_cosine * light_cosine) / distance2;
-                        path = (absorption * radiance * geometry) / pdf;
+                        const auto hit = _tlas->intersect(light_ray);
+                        if (hit.hit && hit.object == sampled_emitter.object)
+                        {
+                            // NEE works for diffuse surfaces only, so albedo is the only required information
+                            auto albedo = intersection.material.albedo;
+                            if (intersection.material.texture)
+                            {
+                                const auto& uv = intersection.uv;
+                                const auto tex = intersection.material.texture->Sample(uv.x, uv.y, intersection.position);
+                                albedo = glm::vec3{ tex.r, tex.g, tex.b } / 255.f;
+                            }
+                            const auto absorption = albedo / glm::pi<Real>();
+                            path = (absorption * irradiance * normal_cosine) / pdf;
+                        }
                     }
                 }
             }
@@ -487,7 +550,6 @@ namespace ir
 
         Real pdf(const glm::vec3& incoming, const glm::vec3& outgoing, const RayIntersection& intersection) const override
         {
-            #pragma message("TODO: implement NEE shader PDF")
             return 1.f;
         }
     };
@@ -568,10 +630,10 @@ namespace ir
             // NEE only works well for diffuse-type surfaces
             const auto nee_probability = sigmoid(1.f - material.metallicity, 3.f);
 
-            //#define ENABLE_NEE
+            #define ENABLE_NEE
             #ifdef ENABLE_NEE
 
-            if (glm::linearRand(0.f, 1.f) < nee_probability)
+            if (random > nee_probability)
             {
                 // NEE sampling
 
@@ -579,7 +641,7 @@ namespace ir
                 const auto nee_sample = next_event_estimation_shader->sample(ray.direction, nearest_intersection, bounces - 1);
                 output_intersection.outgoing = nee_sample.outgoing;
 
-                path += nee_sample.absorption / nee_probability;
+                path += nee_sample.absorption;
             }
             else
 
@@ -627,17 +689,10 @@ namespace ir
                     material_pdf = 1.f / diffuse_weight;
                 }
 
-                const auto brdf = absorption * trace(output_intersection.outgoing, output_intersection, bounces - 1) / material_pdf;
-
-                #ifdef ENABLE_DLS
-
-                path += brdf / (1.f - nee_probability);
-
-                #else
+                const auto sample = trace(output_intersection.outgoing, output_intersection, bounces - 1);
+                const auto brdf = (absorption * sample) / material_pdf;
 
                 path += brdf;
-
-                #endif
             }
             
             return path;
