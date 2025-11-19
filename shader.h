@@ -199,17 +199,31 @@ namespace ir
         }
 
     private:
+        static glm::vec3 build_tangent(const glm::vec3& n)
+        {
+            static const auto IN = glm::vec3{ 0.f, 0.f, 1.f };
+            static const auto UP = glm::vec3{ 0.f, 1.f, 0.f };
+
+            auto tangent = glm::cross(n, IN);
+            if (glm::length2(tangent) < EPSILON_F)
+            {
+                tangent = glm::cross(n, UP);
+            }
+
+            return glm::normalize(tangent);
+        }
+
         static Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
         {
-            const auto roughness4 = roughness * roughness * roughness * roughness;
+            // Trowbridge-Reitz GGX; uses roughness^2 -> roughness^4 as in your code
+            const auto roughness2 = roughness * roughness;
+            const auto roughness4 = roughness2 * roughness2;
 
-            const auto angle = glm::max(glm::dot(normal, half_vector), 0.f);
-            const auto angle2 = angle * angle;
+            const auto half_cosine = glm::max(glm::dot(normal, half_vector), 0.f);
+            const auto half_cosine2 = half_cosine * half_cosine;
 
-            const auto scalar = (angle2 * (roughness4 - 1.f) + 1.f);
-            const auto denominator = glm::pi<Real>() * scalar * scalar;
-
-            return roughness4 / denominator;
+            const auto denom = glm::pi<Real>() * glm::pow(half_cosine2 * (roughness4 - 1.f) + 1.f, 2.f);
+            return roughness4 / glm::max(denom, EPSILON_F);
         }
 
         static Real compute_smith_G(const glm::vec3& light, const glm::vec3& view, const glm::vec3& normal, Real roughness)
@@ -226,30 +240,57 @@ namespace ir
 
             return G1_light * G1_view;
         }
+
+        static glm::vec3 sample_GGX_half_vector(const glm::vec3& normal, Real roughness)
+        {
+            // GGX NDF sampling in spherical coords, then to world
+
+            const auto u = glm::linearRand(0.f, 1.f);
+            const auto v = glm::linearRand(0.f, 1.f);
+
+            const auto phi = 2.f * glm::pi<Real>() * u;
+
+            const auto cosine = glm::sqrt((1.f - v) / (1.f + (roughness * roughness - 1.f) * v));
+            const auto sine = glm::sqrt(glm::max(0.f, 1.f - cosine * cosine));
+
+            const auto tangent = build_tangent(normal);
+            const auto bitangent = glm::normalize(glm::cross(normal, tangent));
+
+            // Euler angles
+            const auto local_coordinates = glm::vec3
+            { 
+                sine * glm::cos(phi), 
+                sine * glm::sin(phi), 
+                cosine
+            };
+
+            const auto world_coordinates = glm::mat3{ tangent, bitangent, normal } * local_coordinates;
+            return glm::normalize(world_coordinates);
+        }
     
     private:
         glm::vec3 shade_ggx(const glm::vec3& incoming, const RayIntersection& intersection) const
         {
             static constexpr auto ROUGHNESS_MINIMUM = .1f;
             static constexpr auto VIEW_ANGLE_MINIMUM = .001f;
+        
+            const auto roughness = glm::max(intersection.material.roughness, ROUGHNESS_MINIMUM);
 
-            const auto V = -incoming;
-            
-            const auto R = glm::reflect(V, intersection.normal); 
-            const auto H = glm::normalize(R + V);
-            
-            const auto roughness = glm::max(intersection.object->material.roughness, ROUGHNESS_MINIMUM);
+            const auto view = -incoming;
+            const auto normal = intersection.normal;
+            const auto half = sample_GGX_half_vector(normal, roughness);
+            const auto reflection = glm::reflect(normal, -incoming);
 
-            const auto D = compute_GGX_D(H, intersection.normal, roughness);
+            const auto D = compute_GGX_D(half, normal, roughness);
+            const auto G = compute_smith_G(reflection, view, normal, roughness);
+
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
-            const auto F = compute_fresnel_F(F0, glm::max(glm::dot(H, V), 0.f));
-            const auto G = compute_smith_G(R, V, intersection.normal, roughness);
+            const auto F = compute_fresnel_F(F0, glm::max(glm::dot(half, view), 0.f));
 
-            const auto reflection_angle = glm::max(glm::dot(intersection.normal, R), 0.f);
-            const auto view_angle = glm::clamp(glm::dot(intersection.normal, V), VIEW_ANGLE_MINIMUM, 1.f);
+            const auto reflection_angle = glm::max(glm::dot(normal, reflection), 0.f);
+            const auto view_angle = glm::clamp(glm::dot(normal, view), VIEW_ANGLE_MINIMUM, 1.f);
 
             const auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
-
             return ggx;
         };
 
@@ -304,10 +345,8 @@ namespace ir
 
             const auto D = compute_GGX_D(H, N, roughness);
 
-            const auto pdf_h = D * normal_cosine;
-            const auto pdf_l = pdf_h / glm::max(4.f * view_cosine, EPSILON_F);
-
-            return pdf_l;
+            const auto pdf = (D * normal_cosine) / glm::max(4.f * view_cosine, EPSILON_F);
+            return pdf;
         }
     };
 
