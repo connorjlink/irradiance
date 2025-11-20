@@ -4,6 +4,19 @@
 // accelerator.cpp
 // (c) 2025 Connor J. Link. All Rights Reserved.
 
+namespace
+{
+    auto compare_object_along_axis = [](ir::Object* left, ir::Object* right, int axis)
+    {
+        return left->centroid[axis] < right->centroid[axis];
+    };
+
+    auto compare_instance_along_axis = [](ir::MeshInstance* left, ir::MeshInstance* right, int axis)
+    {
+        return left->volume->centroid[axis] < right->volume->centroid[axis];
+    };
+}
+
 namespace ir
 {
     bool BoundingVolume::contains(const glm::vec3& point) const
@@ -80,8 +93,6 @@ namespace ir
 
         std::vector<Object*> left_objects;
         std::vector<Object*> right_objects;
-
-        const auto midpoint = volume->centroid[axis];
 
         // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
         // handle unbalanced splits by forcing a balanced split
@@ -207,8 +218,6 @@ namespace ir
 
         std::vector<MeshInstance*> left_instances;
         std::vector<MeshInstance*> right_instances;
-
-        const auto midpoint = volume->centroid[axis];
 
         // IMPORTANT: HAVE TO SORT ALONG THE TARGET AXIS OTHERWISE THE SPLIT IS INVALID!! BAD ARTIFACTS!!!
         // handle unbalanced splits by forcing a balanced split

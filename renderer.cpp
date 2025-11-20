@@ -701,6 +701,9 @@ namespace ir
             }, std::move(result));
         };
 
+        // current material applied to each face; overwritten for each material file usage
+        auto current_material = default_material;
+
         std::string line;
         while (std::getline(file, line))
         {
@@ -709,9 +712,6 @@ namespace ir
             {
                 continue;
             }
-
-            // TODO: incorporate texture coordinates as necessary
-            // TODO: incorporate material files as necessary
 
             if (tokens[0] == "v" && tokens.size() >= 4)
             {
@@ -732,6 +732,14 @@ namespace ir
                 vertices.emplace_back(x, y, z);
                 normals.emplace_back(x, y, z);
             }
+            else if (tokens[0] == "vt" && tokens.size() >= 3) 
+            {
+                // apple clang doesn't yet support C++17 std::from_chars<T> requires std::is_floating_point_v<T>(), so the following line does not work
+                // const auto [u, v] = from_strings<Real>(tokens[1], tokens[2]);
+                const auto u = stof(tokens[1]);
+                const auto v = stof(tokens[2]);
+                texture_coordinates.emplace_back(u, v);
+            }
             else if (tokens[0] == "f" && tokens.size() >= 4)
             {
                 if (tokens.size() == 4)
@@ -739,12 +747,21 @@ namespace ir
                     // triangle, 3 vertices to form the face
                     // tokens could be v, v//n, v/t, or v/t/n
 
-                    auto parse_vertex_index = [&](const std::string& s, int& vi, int& ni)
+                    auto parse_vertex_index = [&](const std::string& s, int& vi, int& ni, int& ti)
                     {
                         vi = ni = 0;
 
                         auto parts = split(s, "/");
 
+                        if (parts.size() > 3)
+                        {
+                            std::println("Warning: invalid face vertex specification `{}`; skipping face", s);
+                            vi = 0;
+                            ni = 0;
+                            return;
+                        }
+
+                        // handle vertex index
                         if (!parts.empty() && !parts[0].empty()) 
                         {
                             const auto result = from_string<int>(parts[0]);
@@ -758,6 +775,23 @@ namespace ir
 
                             vi = result.result;
                         }
+
+                        // handle texture coordinate if present
+                        if ((parts.size() == 3 || parts.size() == 2) && !parts[1].empty())
+                        {
+                            const auto result = from_string<int>(parts[1]);
+                            if (!result.success)
+                            {
+                                std::println("Warning: invalid texture coordinate index `{}` in face specification; skipping face", s);
+                                vi = 0;
+                                ni = 0;
+                                return;
+                            }
+
+                            ti = result.result;
+                        }
+
+                        // handle vertex normal if present
                         if (parts.size() == 3 && !parts[2].empty()) 
                         {
                             const auto result = from_string<int>(parts[2]);
@@ -788,10 +822,11 @@ namespace ir
 
                     auto v0 = 0, v1 = 0, v2 = 0;
                     auto n0 = 0, n1 = 0, n2 = 0;
+                    auto t0 = 0, t1 = 0, t2 = 0;
 
-                    parse_vertex_index(tokens[1], v0, n0);
-                    parse_vertex_index(tokens[2], v1, n1);
-                    parse_vertex_index(tokens[3], v2, n2);
+                    parse_vertex_index(tokens[1], v0, n0, t0);
+                    parse_vertex_index(tokens[2], v1, n1, t1);
+                    parse_vertex_index(tokens[3], v2, n2, t2);
 
                     auto triangle = new Triangle
                     { 
@@ -801,7 +836,7 @@ namespace ir
                         glm::vec2{ 0.f, 0.f }, 
                         glm::vec2{ 0.f, 1.f }, 
                         glm::vec2{ 1.f, 1.f }, 
-                        default_material,
+                        current_material,
                     };
 
                     const auto have_all_normals = (n0 > 0 && n1 > 0 && n2 > 0 && 
@@ -855,7 +890,7 @@ namespace ir
                         vertices[face0.result - 1],
                         vertices[face1.result - 1],
                         vertices[face3.result - 1],
-                        default_material,
+                        current_material,
                     });
                 }
             }
@@ -866,7 +901,7 @@ namespace ir
                 if (materials.contains(material_name))
                 {
                     const auto reference = materials.at(material_name);
-                    #warning TODO INTEGRATE MATERIAL REFERENCE INTO SUBSEQUENT PRIMITIVES. SHOULD THIS TRACK WITH A SINGLE LOOP-CARRIED VARIABLE?
+                    current_material = reference;
                 }
                 else
                 {

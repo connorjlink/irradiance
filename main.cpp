@@ -373,7 +373,7 @@ public:
                 const auto index = x + y * ScreenWidth();
 
                 auto color = frame_buffer[x + y * ScreenWidth()] / sample_counts[index];
-                color = gamma_correct(color);
+                //color = gamma_correct(color);
 
                 const auto result = RGB
                 { 
@@ -1147,7 +1147,7 @@ public:
             accumulated_frames = 1;
             maximum_laplacian = 0.f;
         }
-        // TODO: necessary if view decay not used
+        // NOTE: necessary if view decay not used
         // if (!dirty && last_dirty)
         // {
         //     //std::fill(reprojection_buffer.begin(), reprojection_buffer.end(), Reprojection{});

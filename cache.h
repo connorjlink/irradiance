@@ -87,7 +87,6 @@ namespace ir
             }
         }
 
-        #pragma message("TODO: incorporate normal and incidence into query for optimization and better matching (quickly reject bad dot product for ray direction/normal alignment)")
         template<std::size_t VoxelThreshold = 0>
         std::optional<CacheEntry> query(const glm::vec3& position) const
         {
