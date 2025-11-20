@@ -607,7 +607,7 @@ public:
             .metallicity = .5f,
             .refraction_index = 1.5f,
             .anisotropy = 0.f,
-            .roughness = .02f,
+            .roughness = .1f,
             .transmission = 0.f,
         });
         static const auto utah_instance = new MeshInstance

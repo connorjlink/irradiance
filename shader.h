@@ -269,7 +269,13 @@ namespace ir
         }
     
     private:
-        glm::vec3 shade_ggx(const glm::vec3& incoming, const RayIntersection& intersection) const
+        struct GGXResult
+        {
+            glm::vec3 specular;
+            glm::vec3 reflection;
+        };
+
+        GGXResult shade_ggx(const glm::vec3& incoming, const RayIntersection& intersection) const
         {
             static constexpr auto ROUGHNESS_MINIMUM = .1f;
             static constexpr auto VIEW_ANGLE_MINIMUM = .001f;
@@ -279,19 +285,25 @@ namespace ir
             const auto view = -incoming;
             const auto normal = intersection.normal;
             const auto half = sample_GGX_half_vector(normal, roughness);
-            const auto reflection = glm::reflect(normal, -incoming);
+            const auto reflection = glm::reflect(-view, half);
 
             const auto D = compute_GGX_D(half, normal, roughness);
             const auto G = compute_smith_G(reflection, view, normal, roughness);
 
-            const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
+            const auto F0 = compute_base_reflectance(intersection.material);
             const auto F = compute_fresnel_F(F0, glm::max(glm::dot(half, view), 0.f));
 
             const auto reflection_angle = glm::max(glm::dot(normal, reflection), 0.f);
             const auto view_angle = glm::clamp(glm::dot(normal, view), VIEW_ANGLE_MINIMUM, 1.f);
 
-            const auto ggx = (D * G * F) / (4.f * reflection_angle * view_angle);
-            return ggx;
+            const auto ggx = (D * G * F) / glm::max(4.f * reflection_angle * view_angle, EPSILON_F);
+            const auto specular = ggx * reflection_angle;
+
+            return GGXResult
+            {
+                .specular = specular,
+                .reflection = reflection,
+            };
         };
 
     private:
@@ -299,7 +311,9 @@ namespace ir
         {
             #ifdef ENABLE_GGX_SPECULAR
 
-            const auto specular = shade_ggx(incoming, intersection);
+            const auto ggx = shade_ggx(incoming, intersection);
+            const auto specular = ggx.specular;
+            const auto reflection = glm::normalize(ggx.reflection);
 
             #else
 
@@ -309,17 +323,18 @@ namespace ir
             const auto F = MetallicShader::compute_fresnel_F(F0, 1.f - normal_angle);
             const auto specular = F;
 
+
+            const auto reflection = glm::reflect(incoming, intersection.normal);
+            const auto reflection_ray = glm::normalize(reflection);
+
             #endif
             
             const auto reflection_origin = intersection.position + intersection.normal * EPSILON_F;
 
-            const auto reflection = glm::reflect(incoming, intersection.normal);
-            const auto reflection_ray = reflection + random_in_unit_sphere(intersection.normal) * intersection.material.roughness;
-                
             const auto outgoing = Ray
             {
                 .origin = reflection_origin,
-                .direction = glm::normalize(reflection_ray),
+                .direction = reflection,
             };
             
             return ShaderResult
@@ -660,31 +675,6 @@ namespace ir
 
             auto path = glm::vec3{ 0.f };
 
-            auto sigmoid = [](Real x, Real coefficient)
-            {
-                const auto saturated = glm::clamp(x, 0.f, 1.f);
-                return glm::pow(saturated, coefficient) / (glm::pow(saturated, coefficient) + glm::pow(1.f - saturated, coefficient));
-            };
-
-            // NEE only works well for diffuse-type surfaces
-            const auto nee_probability = sigmoid(1.f - material.metallicity, 3.f);
-
-            #define ENABLE_NEE
-            #ifdef ENABLE_NEE
-
-            if (random > nee_probability)
-            {
-                // NEE sampling
-
-                static auto next_event_estimation_shader = new NextEventEstimationShader{ _scene_instances };
-                const auto nee_sample = next_event_estimation_shader->sample(ray.direction, nearest_intersection, bounces - 1);
-                output_intersection.outgoing = nee_sample.outgoing;
-
-                path += nee_sample.absorption;
-            }
-            else
-
-            #endif
             {
                 // BRDF sampling
 
@@ -703,7 +693,7 @@ namespace ir
                     output_intersection.outgoing = metallic_sample.outgoing;
 
                     absorption = metallic_sample.absorption;
-                    material_pdf = 1.f / metallic_weight;
+                    material_pdf = metallic_weight;
                 }
                 else if (random < metallic_weight + dielectric_weight)
                 {
@@ -714,22 +704,49 @@ namespace ir
                     output_intersection.outgoing = dielectric_sample.outgoing;
 
                     absorption = dielectric_sample.absorption;
-                    material_pdf = 1.f / dielectric_weight;
+                    material_pdf = dielectric_weight;
                 }
                 else
                 {
                     // diffuse scattering
+
+                    #define ENABLE_NEE
+                    #ifdef ENABLE_NEE
+
+                    auto sigmoid = [](Real x, Real coefficient)
+                    {
+                        const auto saturated = glm::clamp(x, 0.f, 1.f);
+                        return glm::pow(saturated, coefficient) / (glm::pow(saturated, coefficient) + glm::pow(1.f - saturated, coefficient));
+                    };
+                
+                    // NEE only works well for diffuse-type surfaces
+                    const auto nee_probability = sigmoid(1.f - material.metallicity, 3.f);
+                
+                    if (random < nee_probability)
+                    {
+                        // NEE sampling
+                    
+                        static auto next_event_estimation_shader = new NextEventEstimationShader{ _scene_instances };
+                        const auto nee_sample = next_event_estimation_shader->sample(ray.direction, nearest_intersection, bounces - 1);
+                        output_intersection.outgoing = nee_sample.outgoing;
+                    
+                        path += nee_sample.absorption;
+                    }
+                
+                    #endif
 
                     static auto diffuse_shader = new DiffuseShader{};
                     const auto diffuse_sample = diffuse_shader->sample(ray.direction, intersection, bounces - 1);
                     output_intersection.outgoing = diffuse_sample.outgoing;
 
                     absorption = diffuse_sample.absorption;
-                    material_pdf = 1.f / diffuse_weight;
+                    material_pdf = diffuse_weight;
                 }
 
+                absorption /= material_pdf;
+
                 const auto sample = trace(output_intersection.outgoing, output_intersection, bounces - 1);
-                const auto brdf = (absorption * sample) / material_pdf;
+                const auto brdf = absorption * sample;
 
                 path += brdf;
             }
