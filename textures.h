@@ -187,6 +187,7 @@ namespace ir
     inline std::unique_ptr<olc::Sprite> rock;
     inline std::unique_ptr<olc::Sprite> gemstone;
     inline std::unique_ptr<olc::Sprite> wood;
+    inline std::unique_ptr<olc::Sprite> wood2;
     inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin_low;
     inline std::unique_ptr<PerlinNoise<256uz, 3uz>> perlin_high;
     inline std::unique_ptr<SquaresTexture<1uz>> squares;
@@ -201,6 +202,7 @@ namespace ir
         rock = std::make_unique<olc::Sprite>("pexels-life-of-pix-8892.jpg");
         gemstone = std::make_unique<olc::Sprite>("pexels-jonnylew-1121123.jpg");
         wood = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129731.jpg");
+        wood2 = std::make_unique<olc::Sprite>("pexels-fwstudio-33348-129732.jpg");
         perlin_low = std::make_unique<PerlinNoise<256uz, 3uz>>(1.f, 10.f);
         perlin_high = std::make_unique<PerlinNoise<256uz, 3uz>>(10.f);
         squares = std::make_unique<SquaresTexture<1uz>>();

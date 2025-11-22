@@ -290,6 +290,12 @@ namespace ir
             const auto D = compute_GGX_D(half, normal, roughness);
             const auto G = compute_smith_G(reflection, view, normal, roughness);
 
+            const auto alpha = intersection.material.anisotropy;
+            const auto tangent_anisotropy = alpha * (1.f - alpha);
+            const auto bitangent_anisotropy = alpha * (1.f + alpha);
+
+            const auto anisotropy_direction = intersection.material.grain;
+
             const auto F0 = compute_base_reflectance(intersection.material);
             const auto F = compute_fresnel_F(F0, glm::max(glm::dot(half, view), 0.f));
 

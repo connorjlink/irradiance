@@ -1225,6 +1225,15 @@ int main(int argc, char** argv)
 
     const auto PPP = hires ? 1 : 2;
 
+    PBRMaterial material{};
+    material.texture = wood.get();
+    const auto grain = ir::compute_material_grain(material);
+    std::println("Material grain: {:.6f}, {:.6f}", grain.x, grain.y);
+
+    material.texture = wood2.get();
+    const auto grain2 = ir::compute_material_grain(material);
+    std::println("Material grain: {:.6f}, {:.6f}", grain2.x, grain2.y);
+
 	Irradiance application{};
 	if (application.Construct(width, height, PPP, PPP, false, false, false, false) == olc::OK)
     {
