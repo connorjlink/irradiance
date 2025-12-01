@@ -37,13 +37,15 @@ namespace ir
     {
         // Modified slab method https://raytracing.github.io/books/RayTracingTheNextWeek.html#boundingvolumehierarchies/axis-alignedboundingboxes(aabbs)
 
-        const auto t0 = (origin - ray.origin) / ray.direction;
-        const auto t1 = (origin + size - ray.origin) / ray.direction;
+        const auto direction_safe = ray.direction + glm::vec3{ EPSILON };
+
+        const auto t0 = (origin - ray.origin) / direction_safe;
+        const auto t1 = (extent - ray.origin) / direction_safe;
 
         const auto entry = glm::min(t0, t1);
         const auto exit = glm::max(t0, t1);
 
-        const auto tmin = glm::max(glm::max(entry.x, entry.y), glm::max(entry.z, 0.f));
+        const auto tmin = glm::max(glm::max(entry.x, entry.y), entry.z);
         const auto tmax = glm::min(glm::min(exit.x, exit.y), exit.z);
 
         return tmax >= tmin;
@@ -71,7 +73,7 @@ namespace ir
 
         // compute a bounding volume for all objects
         auto origin = glm::vec3{ std::numeric_limits<Real>::max() };
-        auto extent = glm::vec3{ std::numeric_limits<Real>::min() };
+        auto extent = glm::vec3{ std::numeric_limits<Real>::lowest() };
 
         for (const auto& object : objects)
         {
@@ -196,7 +198,7 @@ namespace ir
 
         // compute a bounding volume for all mesh instances
         auto origin = glm::vec3{ std::numeric_limits<Real>::max() };
-        auto extent = glm::vec3{ std::numeric_limits<Real>::min() };
+        auto extent = glm::vec3{ std::numeric_limits<Real>::lowest() };
 
         for (const auto& instance : meshes)
         {

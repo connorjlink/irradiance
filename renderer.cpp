@@ -599,14 +599,55 @@ namespace ir
 
         const auto local_space_entry_position = local_intersection.position;
         const auto local_space_entry = local_intersection.depth;
-        const auto local_space_exit = local_intersection.exit;
+        auto local_space_exit = local_intersection.exit;
+
+        if (local_space_exit == std::numeric_limits<float>::infinity())
+        {
+            const auto backface_ray = Ray
+            {
+                .origin = local_space_entry_position + local_space_ray.direction * EPSILON_F,
+                .direction = local_space_ray.direction,
+            };
+
+            auto backcast = MISS;
+            if (blas)
+            {
+                backcast = blas->intersect(backface_ray);
+            }
+            else
+            {
+                for (const auto& object : mesh)
+                {
+                    if (!object)
+                    {
+                        continue;
+                    }
+
+                    const auto intersection = object->intersect(backface_ray);
+                    if (intersection.hit)
+                    {
+                        if (intersection.exit > backcast.exit)
+                        {
+                            backcast = intersection;
+                        }
+                    }
+                }
+            }
+
+            if (backcast.hit)
+            {
+                local_space_exit = local_space_entry + EPSILON_F + backcast.exit;
+            }
+        }
 
         // transform relevant intersection space (object local coordinates) back into world space
+
+        const auto normal_matrix = glm::transpose(glm::inverse(transform));
 
         const auto world_space_entry_position = glm::vec3{ transform * glm::vec4{ local_space_entry_position, 1.f } };
         local_intersection.position = world_space_entry_position;
         // IMPORTANT: DO NOT CHANGE W=0, OTHERWISE THE TRANSLATION GETS APPLIED AGAIN WITH BAD RESULTS!!!!
-        local_intersection.normal = glm::normalize(glm::vec3{ transform * glm::vec4{ local_intersection.normal, 0.f } });
+        local_intersection.normal = glm::normalize(glm::vec3{ normal_matrix * glm::vec4{ local_intersection.normal, 0.f } });
 
         local_intersection.depth = glm::length(world_space_entry_position - ray.origin);
         if (local_space_exit != std::numeric_limits<Real>::infinity())
@@ -683,7 +724,7 @@ namespace ir
 
         auto load_texture = [&](const std::string& path)
         {
-            if (!std::filesystem::exists(filepath))
+            if (!std::filesystem::exists(path))
             {
                 std::println("Warning: non-existent texture file `{}`; falling back to default", path);
             }
@@ -729,7 +770,6 @@ namespace ir
                 const auto x = std::stof(tokens[1]);
                 const auto y = std::stof(tokens[2]);
                 const auto z = std::stof(tokens[3]);
-                vertices.emplace_back(x, y, z);
                 normals.emplace_back(x, y, z);
             }
             else if (tokens[0] == "vt" && tokens.size() >= 3) 
@@ -749,7 +789,7 @@ namespace ir
 
                     auto parse_vertex_index = [&](const std::string& s, int& vi, int& ni, int& ti)
                     {
-                        vi = ni = 0;
+                        vi = ni = ti = 0;
 
                         auto parts = split(s, "/");
 
@@ -805,7 +845,7 @@ namespace ir
 
                             ni = result.result;
                         }
-                        else if (parts.size() == 2 && !parts[1].empty()) 
+                        else if (parts.size() == 2 && !parts[1].empty() && ti == 0)
                         {
                             const auto result = from_string<int>(parts[1]);
                             if (!result.success)
@@ -924,11 +964,19 @@ namespace ir
                 std::string material_line{};
                 while (std::getline(material_file, material_line))
                 {
+                    if (material_line.starts_with("#") || material_line.empty())
+                    {
+                        continue;
+                    }
+
                     const auto material_tokens = split(material_line, " ");
                     if (material_tokens.empty())
                     {
                         continue;
                     }
+
+                    std::println("Material token[0]: {}", material_tokens[0]);
+                    std::println("Material token size: {}", material_tokens.size());
 
                     // NOTE: for simplicity, ignoring Ka, Tf, 
                     // NOTE: for simplicity, ignoring illum, default to full PBR
@@ -1100,6 +1148,35 @@ namespace ir
                             }
                         }
                     }
+                    else if (material_tokens[0] == "Km")
+                    {
+                        // metallicity
+
+                        if (material_tokens.size() >= 2)
+                        {
+                            //const auto metallicity = from_string<Real>(material_tokens[1]);
+                            const auto metallicity = ParseResult{ true, std::stof(material_tokens[1]) };
+                            if (!metallicity.success)
+                            {
+                                std::println("Warning: invalid metallicity `{}` in material `{}`", material_tokens[1], material.has_value() ? material->name : "<anonymous>");
+                                continue;
+                            }
+
+                            if (material.has_value())
+                            {
+                                material->metallicity = glm::clamp(metallicity.result, 0.f, 1.f);
+                            }
+                        }
+                    }
+                }
+
+                if (material.has_value())
+                {
+                    if (materials.contains(material->name))
+                    {
+                        std::println("Warning: duplicate material definition `{}`; overwriting previous definition", material->name);
+                    }
+                    materials[material->name] = *material;
                 }
             }
         }

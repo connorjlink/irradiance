@@ -18,6 +18,7 @@ namespace ir
     Mesh cylinder(const PBRMaterial& material = PBRMaterial{});
     Mesh teapot(const PBRMaterial& material = PBRMaterial{});
     Mesh monkey(const PBRMaterial& material = PBRMaterial{});
+    Mesh diamond(const PBRMaterial& material = PBRMaterial{});
 }
 
 #endif 

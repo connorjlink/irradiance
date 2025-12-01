@@ -233,7 +233,9 @@ namespace ir
             const auto light_angle = glm::max(glm::dot(normal, light), 0.f);
             const auto view_angle = glm::max(glm::dot(normal, view), 0.f);
 
-            const auto k = (roughness + 1.f) * (roughness + 1.f) / 8.f;
+            const auto roughness2 = roughness * roughness;
+
+            const auto k = (roughness2 + 1.f) * (roughness2 + 1.f) / 8.f;
 
             const auto G1_light = light_angle / (light_angle * (1.f - k) + k);
             const auto G1_view = view_angle / (view_angle * (1.f - k) + k);
@@ -294,6 +296,8 @@ namespace ir
             const auto tangent_anisotropy = alpha * (1.f - alpha);
             const auto bitangent_anisotropy = alpha * (1.f + alpha);
 
+            #pragma warning "ENABLE ANISOTROPY SHADING FULLY"
+
             const auto anisotropy_direction = intersection.material.grain;
 
             const auto F0 = compute_base_reflectance(intersection.material);
@@ -303,7 +307,7 @@ namespace ir
             const auto view_angle = glm::clamp(glm::dot(normal, view), VIEW_ANGLE_MINIMUM, 1.f);
 
             const auto ggx = (D * G * F) / glm::max(4.f * reflection_angle * view_angle, EPSILON_F);
-            const auto specular = ggx * reflection_angle;
+            const auto specular = ggx;
 
             return GGXResult
             {
@@ -359,10 +363,10 @@ namespace ir
 
             const auto H = glm::normalize(V + L);
 
-            const auto roughness = glm::max(intersection.object->material.roughness, EPSILON_F);
+            const auto roughness = glm::max(intersection.material.roughness, EPSILON_F);
 
             const auto normal_cosine = glm::max(glm::dot(N, H), 0.f);
-            const auto view_cosine = glm::max(glm::dot(V, H), 0.f);
+            const auto view_cosine = glm::max(glm::abs(glm::dot(V, H)), EPSILON_F);
 
             const auto D = compute_GGX_D(H, N, roughness);
 
@@ -536,13 +540,13 @@ namespace ir
             const auto u = glm::linearRand(0.f, 1.f - std::numeric_limits<Real>::epsilon());
             const auto it = std::upper_bound(cdf.begin(), cdf.end(), u);
             
-            int idx = int(it - cdf.begin());
-            if (idx >= int(emissive_objects.size()))
+            auto index = int(it - cdf.begin());
+            if (index >= int(emissive_objects.size()))
             {
-                idx = int(emissive_objects.size()) - 1;
+                index = int(emissive_objects.size()) - 1;
             }
             
-            return idx;
+            return index;
         }
 
         ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t bounces) const override

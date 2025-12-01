@@ -55,7 +55,7 @@ static constexpr Real HISTORY_EPSILON = 1e-6f;
 
 static constexpr Real CLEAN_EXPIRY = 1.f;
 
-static constexpr int FRAME_HISTORY = 1;
+static constexpr int FRAME_HISTORY = 3;
 
 static constexpr std::array<std::array<Real, 3>, 3> LAPLACIAN_KERNEL
 {
@@ -64,7 +64,7 @@ static constexpr std::array<std::array<Real, 3>, 3> LAPLACIAN_KERNEL
     std::array<Real, 3>{ 0.f,  1.f, 0.f },
 };
 
-#define ENABLE_PRESENTATION_TONEMAPPING
+//#define ENABLE_PRESENTATION_TONEMAPPING
 
 TLAS* _tlas = nullptr;
 
@@ -254,11 +254,11 @@ private:
         const auto v1 = glm::vec2{ glm::cos(theta0), glm::sin(theta0) };
         const auto v2 = glm::vec2{ glm::cos(theta1), glm::sin(theta1) };
     
-        return u * v1 + v * v2;;
+        return u * v1 + v * v2;
     };
 
-    static constexpr std::uint32_t Blades = 7;
-    static constexpr Real Rotation = std::numbers::pi + (std::numbers::pi / (2.f * Blades));
+    static constexpr std::uint32_t BLADES = 7;
+    static constexpr Real ROTATION = std::numbers::pi + (std::numbers::pi / (2.f * BLADES));
 
 public:
     void capture_shutter(Real timestamp)
@@ -484,11 +484,9 @@ public:
                 {
                     .albedo = glm::vec3{ .2f, .4f, .9f },
                     .emission = glm::vec3{ 0.f, 0.f, 0.f },
-                    .metallicity = .1f,
-                    .refraction_index = .1f,
+                    .metallicity = .2f,
                     .anisotropy = 0.f,
-                    .roughness = 0.1f,
-                    .transmission = .2f,
+                    .roughness = .3f,
                 }
             }
         };
@@ -548,10 +546,10 @@ public:
         {
             .albedo = glm::vec3{ .7f, .2f, .9f },
             .emission = glm::vec3{ 0.f, 0.f, 0.f },
-            .metallicity = .7f,
+            .metallicity = .9f,
             .refraction_index = 1.5f,
             .anisotropy = 0.f,
-            .roughness = .5f,
+            .roughness = .2f,
             .transmission = .1f,
         });
         static const auto monkey_instance = new MeshInstance
@@ -616,6 +614,24 @@ public:
             utah
         };
         _scene_instances.emplace_back(utah_instance);
+
+        static const auto gem = diamond(PBRMaterial
+        {
+            .albedo = glm::vec3{ 1.f, .7f, 0.7f },
+            .emission = glm::vec3{ 0.f, 0.f, 0.f },
+            .metallicity = .2f,
+            .refraction_index = 1.5f,
+            .anisotropy = 0.f,
+            .roughness = .1f,
+            .transmission = .99f,
+        });
+        static const auto gem_instance = new MeshInstance
+        {
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ 1.f }), glm::vec3{ -1.5f, -10.f, .5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
+            gem
+        };
+        _scene_instances.emplace_back(gem_instance);
+
 
         // NOTE: for radiance cache testing only!!
         // scene_instances.emplace_back(new MeshInstance
@@ -952,7 +968,7 @@ public:
 
                 if (enable_dof)
                 {
-                    const auto aperture_sample = sample_polygon(Blades, Rotation) * aperture_radius;
+                    const auto aperture_sample = sample_polygon(BLADES, ROTATION) * aperture_radius;
 
                     // effectively runs the UV coordinate-back calculation like in https://raytracing.github.io/books/RayTracingInOneWeekend.html#dielectrics/refraction
                     jittered_ray.origin += compute_right(then.yaw, then.pitch) * aperture_sample.x + UP * aperture_sample.y;
@@ -1018,7 +1034,6 @@ public:
             const auto tone_mapped = iso_corrected;
 
             #endif
-
 
             const auto half_life = dirty ? HISTORY_HALF_LIFE_DIRTY : HISTORY_HALF_LIFE_STABLE;
             const auto decay = glm::pow(.5f, fElapsedTime / glm::max(half_life, HISTORY_EPSILON));
@@ -1121,6 +1136,7 @@ public:
                 #ifdef ENABLE_PRESENTATION_TONEMAPPING
 
                 color = tonemap(color);
+                //color = gamma_correct(color);
 
                 #endif
 

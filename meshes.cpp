@@ -34,4 +34,9 @@ namespace ir
     {
         return load_obj("monkey.obj", material);
     }
+
+    Mesh diamond(const PBRMaterial& material)
+    {
+        return load_obj("test.obj", material);
+    }
 }
