@@ -169,7 +169,7 @@ private:
         static constexpr auto kernel_y_offset = std::int32_t{ LAPLACIAN_KERNEL[0].size() / 2 };
         
         static const auto number = ScreenWidth() * ScreenHeight();
-        static auto* buffer = new Real[number]{};
+        static auto* buffer = new Real[number]{ 0.f };
 
         auto laplacian = 0.f;
 
