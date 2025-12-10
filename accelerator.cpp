@@ -179,8 +179,6 @@ namespace ir
         return MISS;
     }
 
-    #warning TODO REDUCE DUPLICATE CODE BETWEEN BLAS AND TLAS
-
     TLAS::TLAS(const std::vector<MeshInstance*>& meshes)
     {
         if (meshes.empty())
