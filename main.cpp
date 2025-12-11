@@ -1136,7 +1136,7 @@ public:
                 #ifdef ENABLE_PRESENTATION_TONEMAPPING
 
                 color = tonemap(color);
-                //color = gamma_correct(color);
+                color = gamma_correct(color);
 
                 #endif
 
