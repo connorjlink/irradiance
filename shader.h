@@ -227,7 +227,7 @@ namespace ir
 
         static Real compute_smith_G(const glm::vec3& light, const glm::vec3& view, const glm::vec3& normal, Real roughness)
         {
-            //  https://schuttejoe.github.io/post/ggximportancesamplingpart2/
+            // see also: https://schuttejoe.github.io/post/ggximportancesamplingpart2/
 
             const auto light_angle = glm::max(glm::dot(normal, light), 0.f);
             const auto view_angle = glm::max(glm::dot(normal, view), 0.f);
