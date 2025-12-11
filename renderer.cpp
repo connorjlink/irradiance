@@ -141,6 +141,8 @@ namespace ir
             }
         }
 
+        const auto uv = (w * uv0) + (u * uv1) + (v * uv2);
+
         return 
         {
             .position = intersection,
@@ -150,7 +152,7 @@ namespace ir
             .exit = std::numeric_limits<Real>::infinity(),
             .hit = true,
             .object = this,
-            .uv = { u, v },
+            .uv = uv,
         };
     }
 
@@ -868,14 +870,27 @@ namespace ir
                     parse_vertex_index(tokens[2], v1, n1, t1);
                     parse_vertex_index(tokens[3], v2, n2, t2);
 
+                    auto uv0 = glm::vec2{ 0.f, 0.f };
+                    auto uv1 = glm::vec2{ 0.f, 1.f };
+                    auto uv2 = glm::vec2{ 1.f, 1.f };
+
+                    if (t0 > 0 && t0 <= static_cast<int>(texture_coordinates.size()) && 
+                        t1 > 0 && t1 <= static_cast<int>(texture_coordinates.size()) && 
+                        t2 > 0 && t2 <= static_cast<int>(texture_coordinates.size()))
+                    {
+                        uv0 = texture_coordinates[t0 - 1];
+                        uv1 = texture_coordinates[t1 - 1];
+                        uv2 = texture_coordinates[t2 - 1];
+                    }
+
                     auto triangle = new Triangle
                     { 
                         vertices[v0 - 1], 
                         vertices[v1 - 1], 
                         vertices[v2 - 1], 
-                        glm::vec2{ 0.f, 0.f }, 
-                        glm::vec2{ 0.f, 1.f }, 
-                        glm::vec2{ 1.f, 1.f }, 
+                        uv0,
+                        uv1,
+                        uv2,
                         current_material,
                     };
 
