@@ -373,7 +373,7 @@ public:
                 const auto index = x + y * ScreenWidth();
 
                 auto color = frame_buffer[x + y * ScreenWidth()] / sample_counts[index];
-                //color = gamma_correct(color);
+                color = gamma_correct(color);
 
                 const auto result = RGB
                 { 
