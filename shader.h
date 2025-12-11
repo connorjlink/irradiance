@@ -291,6 +291,7 @@ namespace ir
             const auto D = compute_GGX_D(half, normal, roughness);
             const auto G = compute_smith_G(reflection, view, normal, roughness);
 
+            // NOTE: anisotropy not complete yet!
             const auto alpha = intersection.material.anisotropy;
             const auto tangent_anisotropy = alpha * (1.f - alpha);
             const auto bitangent_anisotropy = alpha * (1.f + alpha);
