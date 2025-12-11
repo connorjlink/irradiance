@@ -380,9 +380,9 @@ namespace ir
     private:
         ShaderResult evaluate(const glm::vec3& incoming, const RayIntersection& intersection, std::int32_t) const override
         {
-            const auto NdotI = glm::dot(intersection.normal, -incoming);
-            const auto is_front_face = NdotI > 0.f;
-            const auto normal_angle = glm::clamp(NdotI, 0.f, 1.f);
+            const auto normal_cosine = glm::dot(intersection.normal, -incoming);
+            const auto is_front_face = normal_cosine > 0.f;
+            const auto normal_angle = glm::clamp(normal_cosine, 0.f, 1.f);
 
             const auto F0 = glm::mix(glm::vec3{ NONMETAL_REFLECTANCE }, intersection.object->material.albedo, intersection.object->material.metallicity);
             const auto F = MetallicShader::compute_fresnel_F(F0, 1.f - normal_angle);
