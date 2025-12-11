@@ -215,7 +215,6 @@ namespace ir
 
         static Real compute_GGX_D(const glm::vec3& half_vector, const glm::vec3& normal, Real roughness)
         {
-            // Trowbridge-Reitz GGX; uses roughness^2 -> roughness^4 as in your code
             const auto roughness2 = roughness * roughness;
             const auto roughness4 = roughness2 * roughness2;
 
@@ -295,8 +294,6 @@ namespace ir
             const auto alpha = intersection.material.anisotropy;
             const auto tangent_anisotropy = alpha * (1.f - alpha);
             const auto bitangent_anisotropy = alpha * (1.f + alpha);
-
-            #pragma warning "ENABLE ANISOTROPY SHADING FULLY"
 
             const auto anisotropy_direction = intersection.material.grain;
 

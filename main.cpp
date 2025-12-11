@@ -41,7 +41,7 @@ using namespace ir;
 static constexpr Real MOUSE_SENSITIVITY = 20.f;
 static constexpr Real MOVEMENT_SPEED = 5.f;
 static const glm::vec3 UP = glm::vec3{ 0.f, 1.f, 0.f };
-static constexpr Real SAMPLE_JITTER = .001f;
+static constexpr Real SAMPLE_JITTER = EPSILON_F;
 
 static constexpr Real BASE_ISO = 25.f;
 static constexpr Real REFERENCE_ISO = 4.f * 4.f * BASE_ISO; // ISO400
@@ -754,7 +754,7 @@ public:
         {
             focal_distance += static_cast<Real>(wheel) * fElapsedTime;
             // small epsilon required--0.f crashes the program from diskRand()!
-            focal_distance = glm::max(focal_distance, .001f);
+            focal_distance = glm::max(focal_distance, EPSILON_F);
             dirty = true;
         }
 

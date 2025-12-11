@@ -94,7 +94,7 @@ namespace ir
 
         // run Cramer's rule to intersect and get barycentric coordinates as UV
         const auto determinant = glm::dot(edge0, test);
-        if (glm::abs(determinant) < .001f)
+        if (glm::abs(determinant) < EPSILON_F)
         {
             // parallel
             return MISS;
@@ -120,7 +120,7 @@ namespace ir
         }
 
         const auto t = glm::dot(edge1, q) * inverse_determinant;
-        if (t <= .001f)
+        if (t <= EPSILON_F)
         {
             // behind
             return MISS;
@@ -185,14 +185,14 @@ namespace ir
         // finds the plane containing the quad, then intersects the plane and verifies quad boundaries
 
         const auto denominator = glm::dot(normal, ray.direction);
-        if (glm::abs(denominator) < .001f)
+        if (glm::abs(denominator) < EPSILON_F)
         {
             // parallel
             return MISS;
         }
 
         const auto t = (constant - glm::dot(normal, ray.origin)) / denominator;
-        if (t <= .001f)
+        if (t <= EPSILON_F)
         {
             // behind
             return MISS;
@@ -282,7 +282,7 @@ namespace ir
             auto intersection = ray.origin + ray.direction * t1;
             auto normal = normal_of(intersection);
 
-            intersection += normal * .001f;
+            intersection += normal * EPSILON_F;
 
             const auto difference = intersection - centroid;
             // no idea if this is geometrically correct, but the same formula from the sphere seems to work okay :)
@@ -309,27 +309,27 @@ namespace ir
     {
         // compute unit-vector normals depending upon the face (since it is axis-aligned)
 
-        if (glm::abs(position.x - origin.x) < .001f)
+        if (glm::abs(position.x - origin.x) < EPSILON_F)
         {
             return glm::vec3{ -1.f, 0.f, 0.f };
         }
-        else if (glm::abs(position.x - (origin.x + size.x)) < .001f)
+        else if (glm::abs(position.x - (origin.x + size.x)) < EPSILON_F)
         {
             return glm::vec3{ 1.f, 0.f, 0.f };
         }
-        else if (glm::abs(position.y - origin.y) < .001f)
+        else if (glm::abs(position.y - origin.y) < EPSILON_F)
         {
             return glm::vec3{ 0.f, -1.f, 0.f };
         }
-        else if (glm::abs(position.y - (origin.y + size.y)) < .001f)
+        else if (glm::abs(position.y - (origin.y + size.y)) < EPSILON_F)
         {
             return glm::vec3{ 0.f, 1.f, 0.f };
         }
-        else if (glm::abs(position.z - origin.z) < .001f)
+        else if (glm::abs(position.z - origin.z) < EPSILON_F)
         {
             return glm::vec3{ 0.f, 0.f, -1.f };
         }
-        else if (glm::abs(position.z - (origin.z + size.z)) < .001f)
+        else if (glm::abs(position.z - (origin.z + size.z)) < EPSILON_F)
         {
             return glm::vec3{ 0.f, 0.f, 1.f };
         }  
@@ -471,7 +471,7 @@ namespace ir
         {
             point = glm::linearRand(container->origin, container->origin + container->size);
         } 
-        while (glm::abs(function(point)) > .001f);
+        while (glm::abs(function(point)) > EPSILON_F);
 
         return point;
     }
