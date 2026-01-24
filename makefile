@@ -21,8 +21,8 @@ release:
 	./irradiance -width=300 -height=300 -bounces=5 -samples=1
 
 linkedin:
-	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL
-	./irradiance -width=800 -height=200 -bounces=5 -samples=1 
+	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS)
+	./irradiance -width=1280 -height=320 -bounces=5 -samples=1 -hires
 
 hires:
 	clang++ -O3 *.cpp -o irradiance $(LIBS) $(INCLUDES) $(EXTRAS) -D CORNELL

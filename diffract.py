@@ -106,7 +106,7 @@ def compute_diffraction(image, blades, rotation):
     save_debug_image(aperture, "diffracted_aperture.png")
     psf = compute_psf(aperture)
 
-    lo, hi = np.percentile(psf, [0.1, 99.9])
+    lo, hi = np.percentile(psf, [0.1, 99.99])
     if hi > lo:
         psf = np.clip((psf - lo) / (hi - lo), 0, 1)
     else:
@@ -117,7 +117,7 @@ def compute_diffraction(image, blades, rotation):
     # sRGB: https://ninedegreesbelow.com/photography/srgb-luminance.html
     luminance = 0.2126 * image[..., 0] + 0.7152 * image[..., 1] + 0.0722 * image[..., 2]
     # proper relinearization with gamma
-    luminance = np.pow(luminance, 1.5)
+    luminance = np.pow(luminance, 2.2)
 
     save_debug_image(luminance, "diffracted_luminance.png")
 

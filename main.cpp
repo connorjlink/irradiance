@@ -610,7 +610,7 @@ public:
         });
         static const auto utah_instance = new MeshInstance
         {
-            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -5.f, .5f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
+            glm::rotate(glm::translate(glm::scale(glm::identity<glm::mat4>(), glm::vec3{ .5f }), glm::vec3{ 1.5f, -10.f, -10.f }), glm::radians(-180.f), glm::vec3{ 1.f, 0.f, 0.f }),
             utah
         };
         _scene_instances.emplace_back(utah_instance);
